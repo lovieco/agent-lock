@@ -448,6 +448,121 @@ describe('watch command', () => {
 
 // ---------------------------------------------------------------------------
 
+describe('doctor command', () => {
+  it('before install → exit 1 with "not installed"', () => {
+    const tmp = makeTmpDir();
+    const r = runCliEnv(['doctor', tmp]);
+    assert.equal(r.status, 1);
+    assert.ok(r.stderr.includes('not installed'), `stderr=${r.stderr}`);
+  });
+
+  it('after install on a clean tree → exits 0 with "clean."', () => {
+    const tmp = makeTmpDir();
+    assert.equal(runCliEnv(['install', tmp]).status, 0);
+    const r = runCliEnv(['doctor', tmp]);
+    assert.equal(r.status, 0, `stderr=${r.stderr}`);
+    assert.ok(r.stdout.includes('livehub doctor:'), `stdout=${r.stdout}`);
+    assert.ok(r.stdout.includes('clean.'));
+  });
+
+  it('reports stale markers (>10 min) and exits 1', () => {
+    const tmp = makeTmpDir();
+    assert.equal(runCliEnv(['install', tmp]).status, 0);
+    const lockMod = loadCopiedLock(tmp);
+    const target = writeFile(tmp, 'src/old.ts', 'const z = 1;\n');
+    assert.equal(lockMod.acquireLock(target, { agentId: 'old-agent', reason: 'r' }).ok, true);
+    const stale = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    fs.writeFileSync(target, fs.readFileSync(target, 'utf-8').replace(/@\S+/, `@${stale}`));
+
+    const r = runCliEnv(['doctor', tmp]);
+    assert.equal(r.status, 1);
+    assert.ok(r.stdout.includes('[stale]'), `stdout=${r.stdout}`);
+    assert.ok(r.stdout.includes('old-agent'));
+    assert.ok(/1 anomaly( or anomalies)? found/.test(r.stdout));
+  });
+
+  it('reports unparseable marker-shaped lines and exits 1', () => {
+    const tmp = makeTmpDir();
+    assert.equal(runCliEnv(['install', tmp]).status, 0);
+    // Marker-shaped (has A= field) but missing N=/@/R= — a half-rewritten
+    // marker. Doctor should flag it. Plain prose containing `livehub lock:`
+    // (no field tokens) must NOT trigger.
+    writeFile(tmp, 'src/bad.ts',
+      '// livehub lock: A=corrupt half-written-marker missing fields\n' +
+      'const x = 1;\n');
+
+    const r = runCliEnv(['doctor', tmp]);
+    assert.equal(r.status, 1);
+    assert.ok(r.stdout.includes('[unparseable]'), `stdout=${r.stdout}`);
+    assert.ok(r.stdout.includes('half-written-marker'));
+  });
+
+  it('does NOT flag prose mentions of `livehub lock:` (no field tokens)', () => {
+    const tmp = makeTmpDir();
+    assert.equal(runCliEnv(['install', tmp]).status, 0);
+    // Comment with the phrase but no A=/agent= field — should be skipped.
+    writeFile(tmp, 'src/prose.ts',
+      '// see also: `grep "livehub lock:" <file>` is the source of truth\n' +
+      'const x = 1;\n');
+
+    const r = runCliEnv(['doctor', tmp]);
+    assert.equal(r.status, 0, `stdout=${r.stdout}`);
+    assert.ok(r.stdout.includes('clean.'));
+  });
+
+  it('reports duplicate (agent, node) pairs and exits 1', () => {
+    const tmp = makeTmpDir();
+    assert.equal(runCliEnv(['install', tmp]).status, 0);
+    writeFile(tmp, 'src/dup.ts',
+      '// livehub lock: A=dupAgent N=fn:foo @2026-04-25T13:00:00.000Z R=Edit\n' +
+      '// livehub lock: A=dupAgent N=fn:foo @2026-04-25T13:00:01.000Z R=Edit\n' +
+      'function foo() { return 1; }\n');
+
+    const r = runCliEnv(['doctor', tmp]);
+    assert.equal(r.status, 1);
+    assert.ok(r.stdout.includes('[duplicate]'), `stdout=${r.stdout}`);
+    assert.ok(r.stdout.includes('dupAgent'));
+    assert.ok(r.stdout.includes('(2 markers)'));
+  });
+
+  it('reports orphan critical-section files (.lh-crit) and exits 1', () => {
+    const tmp = makeTmpDir();
+    assert.equal(runCliEnv(['install', tmp]).status, 0);
+    const orphan = writeFile(tmp, 'src/abandoned.ts.lh-crit', '');
+
+    const r = runCliEnv(['doctor', tmp]);
+    assert.equal(r.status, 1);
+    assert.ok(r.stdout.includes('[orphan-crit]'), `stdout=${r.stdout}`);
+    assert.ok(r.stdout.includes(orphan));
+  });
+
+  it('reports multiple anomalies in one run with the correct count', () => {
+    const tmp = makeTmpDir();
+    assert.equal(runCliEnv(['install', tmp]).status, 0);
+    // 1× stale, 1× duplicate (with FRESH timestamps so the dup file isn't
+    // ALSO flagged as stale — keeps the count assertion clean).
+    const lockMod = loadCopiedLock(tmp);
+    const a = writeFile(tmp, 'src/a.ts', 'const a = 1;\n');
+    lockMod.acquireLock(a, { agentId: 'stale-A', reason: 'x' });
+    const stale = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    fs.writeFileSync(a, fs.readFileSync(a, 'utf-8').replace(/@\S+/, `@${stale}`));
+    const fresh1 = new Date(Date.now() -  5 * 1000).toISOString();
+    const fresh2 = new Date(Date.now() - 10 * 1000).toISOString();
+    writeFile(tmp, 'src/b.ts',
+      `// livehub lock: A=dupB N=fn:bar @${fresh1} R=Edit\n` +
+      `// livehub lock: A=dupB N=fn:bar @${fresh2} R=Edit\n` +
+      'function bar() { return 2; }\n');
+
+    const r = runCliEnv(['doctor', tmp]);
+    assert.equal(r.status, 1);
+    assert.ok(r.stdout.includes('[stale]'));
+    assert.ok(r.stdout.includes('[duplicate]'));
+    assert.ok(/2 anomaly( or anomalies)? found/.test(r.stdout), `stdout=${r.stdout}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
 describe('default target (cwd)', () => {
   it('install with no target arg uses cwd', () => {
     const tmp = makeTmpDir();

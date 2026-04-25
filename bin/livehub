@@ -10,6 +10,7 @@
 //   livehub purge-all [<target-dir>]   strip every marker from every file
 //   livehub on | off  [<target-dir>]   toggle CLAUDE_FILE_LOCK kill-switch
 //   livehub watch     [<target-dir>] [--once]   live TUI of active locks, refreshed every 1s
+//   livehub doctor    [<target-dir>]   audit the tree for stale / unparseable / duplicate / orphan markers
 //   livehub test      [<target-dir>]   simulate acquire / collision / release
 //   livehub help                       this message
 
@@ -309,6 +310,121 @@ function cmdWatch() {
   /* c8 ignore stop */
 }
 
+// ---------------------------------------------------------------------------
+// doctor — one-shot health audit of marker state in the tree
+// ---------------------------------------------------------------------------
+
+const DOCTOR_STALE_MS = 10 * 60 * 1000;
+
+/** Walk `dir` and collect anomalies in marker state. Pure: returns a list of
+ *  `{ kind, target, ... }` objects. cmdDoctor formats and exits. */
+function findDoctorAnomalies(dir, lockMod, now = Date.now()) {
+  const anomalies = [];
+  const SIDECAR = '.livehub-lock';
+  const CRIT    = '.lh-crit';
+
+  const walk = (d) => {
+    let entries;
+    try { entries = fs.readdirSync(d, { withFileTypes: true }); }
+    /* c8 ignore next 2 — readdir errors on a child path are rare and non-fatal */
+    catch { return; }
+    for (const ent of entries) {
+      const full = path.join(d, ent.name);
+      if (ent.isDirectory()) {
+        if (['node_modules', '.git', '.next'].includes(ent.name)) continue;
+        if (ent.name === 'worktrees' && path.basename(d) === '.claude') continue;
+        walk(full);
+        continue;
+      }
+      // Orphan critical-section files — left over from a crashed acquire.
+      if (ent.name.endsWith(CRIT)) {
+        const stat = fs.statSync(full);
+        anomalies.push({ kind: 'orphan-crit', target: full, ageMs: now - stat.mtimeMs });
+        continue;
+      }
+      if (ent.name.endsWith(SIDECAR)) continue; // sidecar JSON has no parse-form anomalies
+      // For commentable files, scan the top of the file for marker-shaped lines
+      // that don't parse, plus duplicate / stale issues.
+      const markers = lockMod._internal.readMarkers(full);
+      // 1. Stale.
+      for (const m of markers) {
+        const age = now - new Date(m.startedAt).getTime();
+        if (!isFinite(age) || age >= DOCTOR_STALE_MS) {
+          anomalies.push({ kind: 'stale', target: full, ...m, ageMs: age });
+        }
+      }
+      // 2. Duplicate (agentId, nodeId).
+      const seen = new Map();
+      for (const m of markers) {
+        const key = `${m.agentId}::${m.nodeId}`;
+        seen.set(key, (seen.get(key) || 0) + 1);
+      }
+      for (const [key, count] of seen) {
+        if (count > 1) {
+          const [agentId, nodeId] = key.split('::');
+          anomalies.push({ kind: 'duplicate', target: full, agentId, nodeId, count });
+        }
+      }
+      // 3. Unparseable: a top comment line that LOOKS like a marker (has the
+      //    `livehub lock:` prefix immediately followed by an A= or agent=
+      //    field token) but parseMarkerLine refuses. Likely a corrupted
+      //    half-rewritten marker. The field-token gate avoids false positives
+      //    on prose like `grep "livehub lock:"` in source comments.
+      const MARKER_SHAPED_RE = /livehub lock:\s+(?:A=|agent=)/;
+      let text;
+      try { text = fs.readFileSync(full, 'utf-8'); }
+      /* c8 ignore next 2 — read errors mid-walk are rare */
+      catch { continue; }
+      const headLines = text.split('\n').slice(0, 16);
+      for (let i = 0; i < headLines.length; i++) {
+        const line = headLines[i];
+        if (MARKER_SHAPED_RE.test(line) && !lockMod._internal.parseMarkerLine(line)) {
+          anomalies.push({ kind: 'unparseable', target: full, line: line.trim(), lineNo: i + 1 });
+        }
+      }
+    }
+  };
+  walk(dir);
+  return anomalies;
+}
+
+/** Format anomalies as a human-readable report. Pure (no I/O). */
+function formatDoctorReport(target, anomalies, now = Date.now()) {
+  const lines = [`livehub doctor: ${target}`, ''];
+  if (!anomalies.length) {
+    lines.push('  clean.');
+    return lines.join('\n') + '\n';
+  }
+  for (const a of anomalies) {
+    if (a.kind === 'stale') {
+      const ageS = Math.floor(a.ageMs / 1000);
+      lines.push(`[stale] ${a.target}`);
+      lines.push(`  agent=${a.agentId} node=${a.nodeId} age=${ageS}s reason=${a.reason || '-'}`);
+    } else if (a.kind === 'unparseable') {
+      lines.push(`[unparseable] ${a.target}:${a.lineNo}`);
+      lines.push(`  ${a.line}`);
+    } else if (a.kind === 'duplicate') {
+      lines.push(`[duplicate] ${a.target}`);
+      lines.push(`  agent=${a.agentId} node=${a.nodeId} (${a.count} markers)`);
+    } else if (a.kind === 'orphan-crit') {
+      const ageS = Math.floor(a.ageMs / 1000);
+      lines.push(`[orphan-crit] ${a.target}`);
+      lines.push(`  age=${ageS}s`);
+    }
+  }
+  lines.push('');
+  lines.push(`${anomalies.length} anomaly${anomalies.length === 1 ? '' : ' or anomalies'} found.`);
+  return lines.join('\n') + '\n';
+}
+
+function cmdDoctor() {
+  const t = resolveTarget(targetArg);
+  const lockMod = loadLock(t);
+  const anomalies = findDoctorAnomalies(t, lockMod);
+  process.stdout.write(formatDoctorReport(t, anomalies));
+  process.exit(anomalies.length ? 1 : 0);
+}
+
 function die(msg) { console.error(msg); process.exit(1); }
 
 const handlers = {
@@ -323,6 +439,7 @@ const handlers = {
   off: () => cmdToggle('0'),
   test: cmdTest,
   watch: cmdWatch,
+  doctor: cmdDoctor,
 };
 const fn = handlers[cmd];
 if (!fn) { console.error(`unknown command: ${cmd}\n`); cmdHelp(); process.exit(1); }
