@@ -8,20 +8,6 @@ none are dependent on each other except where noted.
 
 ## Operational
 
-### `livehub doctor` — one-shot health audit
-Scan the project tree once and print a report:
-- Markers held by sessions that no longer exist (heuristic: agentId matches
-  a `claude-code-sess-XXXXXXXX` pattern but the session isn't in the live
-  Claude session list — probably need a stat file or a heuristic based on
-  age).
-- Markers older than `staleMs` (10 min default).
-- Marker lines that don't parse with the current `MARKER_LINE_RE`.
-- Duplicate markers on the same `(agentId, nodeId)` for one file.
-
-Exits 0 if clean, 1 if any anomaly found. Useful for a `pre-commit` or CI hook.
-
-Files: `bin/livehub` (add `cmdDoctor`), `test/cli.test.cjs` (4 cases).
-
 ### `livehub release-mine` — release every marker for the current session
 The user's terminal session has its own `session_id`. After a crash, this
 command releases everything that session held without waiting for `staleMs`.
@@ -137,3 +123,5 @@ for sub-agent calls. Add a debug-print hook first to capture a real payload.
 - ✅ Markdown support (frontmatter + headings)
 - ✅ Shorter marker format (`A=`, `N=`, `@`, `R=`)
 - ✅ `livehub watch` — live TUI of active locks
+- ✅ `livehub doctor` — one-shot health audit (stale / unparseable / duplicate / orphan-crit)
+- ✅ Globally wired in `~/.claude/settings.json` — every project (current + future) is protected by livehub via absolute-path hooks pointing at `/Users/s/Code/lovieco/livehub/hooks/`. No per-project install needed going forward.
