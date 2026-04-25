@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build / coverage output
+coverage/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Per-user Claude Code config (settings.local.json holds per-machine
+# allowlists, .claude/launch.json holds dev-server state).
+.claude/launch.json
+.claude/settings.local.json
+
+# Critical-section sidecars left over from crashed acquires (auto-cleared
+# after 2s by the next acquire, but never source-tracked).
+*.lh-crit
+
+# Sidecar markers for unsupported extensions — runtime state, not source.
+*.livehub-lock
