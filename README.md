@@ -10,52 +10,63 @@ agent-lock lets every agent edit the same tree at the same time. When one starts
 
 ## The problem in one picture
 
+Today, every code change goes through the git dance:
+
 ```
-        same checkout
+  git clone  ─►  branch  ─►  edit  ─►  commit  ─►  push  ─►  PR  ─►  conflict  ─►  merge
+                                                                          │
+                                                                          ▼
+                                                                you, manually
+```
+
+That made sense when one human was making one change. But now imagine 100 agents working on 100 small tasks at the same time:
+
+```
+              one repo on github
+                     │
+   ┌──────────┬──────┴──────┬──────────┐
+   ▼          ▼             ▼          ▼
+ clone #1   clone #2      clone #3   …  clone #100
+ branch #1  branch #2     branch #3  …  branch #100
+   │          │             │          │
+   edit       edit          edit       edit
+   │          │             │          │
+   PR #1     PR #2         PR #3   …   PR #100
+                     │
+                     ▼
+            100 PRs, ~hundreds of merge conflicts,
+            100 copies of node_modules on disk,
+            and one human refereeing all of it
+```
+
+100 agents means 100 full copies of the repo. 100 `node_modules` folders. 100 build caches. 100 snapshots that all start drifting from the real repo the moment they're created. And every pair of agents that touched the same file is one more merge conflict you have to resolve by hand.
+
+**With agent-lock there is one tree. No clones, no branches, no snapshots.** Every agent edits the same live repo. When one is editing a file, the others see "taken — pick another" and move on. When it's done, the file is immediately up to date for everyone. There is nothing to merge because nothing ever forked.
+
+```
+        one shared tree
   ┌─────────────────────────┐
-  │   src/schema.ts         │
-  └────────▲───────▲────────┘
-           │       │
-       Write       Write          (same instant)
-           │       │
-       ┌───┴───┐ ┌─┴─────┐
-       │Agent A│ │Agent B│
-       └───────┘ └───────┘
-
-  Result without coordination:
-  whoever wrote last wins.
-  The other agent's edits — gone, silently.
+  │   src/schema.ts   🔒 A  │ ← A is editing now
+  │   src/api.ts            │ ← free
+  │   src/utils.ts    🔒 C  │ ← C is editing now
+  └─────────────────────────┘
+        ▲       ▲       ▲
+        │       │       │
+     Agent A  Agent B  Agent C   …   Agent N
+              (picks
+               a free
+               file)
 ```
 
-### The status quo: copy the whole repo, edit, fight the merge
+### Why the old way breaks down
 
-To change one line in one file today, the standard advice is: clone or `git worktree add` the entire project so the agent has its own private copy. A whole tree, just to touch one function. Multiply that by N agents and you have N copies of `node_modules`, N build caches, N versions of every file — all to keep the agents from stepping on each other.
+When two agents both edit `schema.ts` on their own branches, you end up with two diffs that each look fine on their own. You have to read both, figure out what each agent was trying to do, and stitch them together. A merge tool can't do this for you — it doesn't know the intent. And it happens every time two agents overlap.
 
-Then, when each agent finishes, you have to bring those copies back together. If two agents touched the same file, you get a merge conflict and you sit there reading both diffs deciding which lines to keep. Every agent works on a *snapshot* of the repo — the moment they branched. By the time they finish, the real repo has moved on, and the longer they took, the more painful the reconciliation.
-
-With agent-lock there is no copy and no snapshot. Every agent works on the same live tree. When one starts editing a file, the others are told "taken" and pick something else. When it finishes, the file is immediately visible to everyone — fully up-to-date, no merge step. The repo is never out of sync with itself because nobody ever forked it.
-
-The standard branch / PR workflow looks like this:
-
-```
-  Agent A: branch ─► edit ─► PR ─┐
-                                  ├─► conflict ─► human merge ─► retry
-  Agent B: branch ─► edit ─► PR ─┘                    ▲
-                                                       │
-                                          you, manually, every time
-
-  Cost paid: at the END, by you.
-  Cost scales: O(N²) in the number of agents touching the same file.
-  Cost is invisible until: the PR opens and the diff lands on your desk.
-```
-
-When two agents both edit `schema.ts` on their own branches, you end up with two diffs that each look fine on their own. You're the one who has to read both, figure out what each agent was trying to do, and stitch them together. A merge tool can't do this for you — it doesn't know the intent. And it happens every time two agents overlap.
-
-agent-lock changes when you pay that cost. Instead of paying it at the end (by hand), you pay it at the start: one of the agents is told "this file is taken, pick another" before it writes a single byte.
-
-You might think the filesystem already handles this — and it does, in a useless way. Both agents' writes go through, just one after the other. But each agent decided what to write *before* the other one's changes existed. So the second write wipes out the first one's work. Nothing crashed. Nothing looks wrong. The edits are just gone.
+You might think the filesystem already handles this — and it does, in a useless way. Both writes go through, just one after the other. But each agent decided what to write *before* the other one's changes existed. So the second write wipes out the first one's work. Nothing crashes. Nothing looks wrong. The edits are just gone.
 
 This is the classic "lost update" problem. You can't catch it with tests or `git diff` — the file looks fine. The only sign is that something an agent claimed to do isn't there anymore.
+
+agent-lock prevents this by changing *when* coordination happens. Instead of paying the cost at the end (by hand, on every conflict), you pay it at the start: one of the agents is told "this file is taken" before it writes a single byte.
 
 ## The fix in one picture
 
