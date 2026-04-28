@@ -120,6 +120,7 @@ function Pitch({ id, eyebrow, title, body, flows, blocked, table }) {
 }
 
 function MarkerDemo({ id, eyebrow, title, body, file, legend }) {
+  const _bodyNodes = richText(body);
   // Render a marker line with agent-coloured agentId.
   const markerLine = (text, agent) => {
     // Highlight `agent=<id>` in colour. Cheap regex.
@@ -136,7 +137,7 @@ function MarkerDemo({ id, eyebrow, title, body, file, legend }) {
     h('div', { class: 'container' },
       h('div', { class: 'eyebrow' }, eyebrow),
       h('h2', null, title),
-      h('p', { class: 'lead' }, body),
+      h('p', { class: 'lead' }, ..._bodyNodes),
 
       h('div', { class: 'file' },
         h('div', { class: 'titlebar' },

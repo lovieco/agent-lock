@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  // Served from https://lovieco.github.io/agent-lock/ on GitHub Pages.
+  base: process.env.GITHUB_ACTIONS ? '/agent-lock/' : '/',
   server: {
     port: 5173,
     strictPort: false,

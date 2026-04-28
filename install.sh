@@ -28,20 +28,20 @@
 
 set -euo pipefail
 
-LIVEHUB_HOME="${LIVEHUB_HOME:-$HOME/.agent-lock-core}"
-LIVEHUB_REPO="${LIVEHUB_REPO:-https://github.com/lovieco/agent-lock.git}"
-LIVEHUB_REF="${LIVEHUB_REF:-main}"
-LIVEHUB_BIN="${LIVEHUB_BIN:-}"
+AGENT_LOCK_HOME="${AGENT_LOCK_HOME:-$HOME/.agent-lock-core}"
+AGENT_LOCK_REPO="${AGENT_LOCK_REPO:-https://github.com/lovieco/agent-lock.git}"
+AGENT_LOCK_REF="${AGENT_LOCK_REF:-main}"
+AGENT_LOCK_BIN="${AGENT_LOCK_BIN:-}"
 DO_SYMLINK=1
 DO_DEPS=1
 
 # --- args -----------------------------------------------------------------
 while [ $# -gt 0 ]; do
   case "$1" in
-    --home) LIVEHUB_HOME="$2"; shift 2 ;;
-    --repo) LIVEHUB_REPO="$2"; shift 2 ;;
-    --ref)  LIVEHUB_REF="$2";  shift 2 ;;
-    --bin)  LIVEHUB_BIN="$2";  shift 2 ;;
+    --home) AGENT_LOCK_HOME="$2"; shift 2 ;;
+    --repo) AGENT_LOCK_REPO="$2"; shift 2 ;;
+    --ref)  AGENT_LOCK_REF="$2";  shift 2 ;;
+    --bin)  AGENT_LOCK_BIN="$2";  shift 2 ;;
     --no-symlink) DO_SYMLINK=0; shift ;;
     --no-deps)    DO_DEPS=0;    shift ;;
     -h|--help)
@@ -65,27 +65,27 @@ node_major=$(node -p 'parseInt(process.versions.node.split(".")[0],10)')
 [ "$node_major" -ge 16 ] || die "node >= 16 required (have $node_major)"
 
 # --- clone / update -------------------------------------------------------
-if [ -d "$LIVEHUB_HOME/.git" ]; then
-  say "updating existing install at $LIVEHUB_HOME"
-  git -C "$LIVEHUB_HOME" fetch --quiet origin
-  git -C "$LIVEHUB_HOME" checkout --quiet "$LIVEHUB_REF"
-  git -C "$LIVEHUB_HOME" reset --hard --quiet "origin/$LIVEHUB_REF" 2>/dev/null || true
+if [ -d "$AGENT_LOCK_HOME/.git" ]; then
+  say "updating existing install at $AGENT_LOCK_HOME"
+  git -C "$AGENT_LOCK_HOME" fetch --quiet origin
+  git -C "$AGENT_LOCK_HOME" checkout --quiet "$AGENT_LOCK_REF"
+  git -C "$AGENT_LOCK_HOME" reset --hard --quiet "origin/$AGENT_LOCK_REF" 2>/dev/null || true
 else
-  say "cloning $LIVEHUB_REPO → $LIVEHUB_HOME ($LIVEHUB_REF)"
-  mkdir -p "$(dirname "$LIVEHUB_HOME")"
-  if ! git clone --quiet --depth 1 --branch "$LIVEHUB_REF" "$LIVEHUB_REPO" "$LIVEHUB_HOME" 2>/dev/null; then
-    git clone --quiet "$LIVEHUB_REPO" "$LIVEHUB_HOME"
-    git -C "$LIVEHUB_HOME" checkout --quiet "$LIVEHUB_REF"
+  say "cloning $AGENT_LOCK_REPO → $AGENT_LOCK_HOME ($AGENT_LOCK_REF)"
+  mkdir -p "$(dirname "$AGENT_LOCK_HOME")"
+  if ! git clone --quiet --depth 1 --branch "$AGENT_LOCK_REF" "$AGENT_LOCK_REPO" "$AGENT_LOCK_HOME" 2>/dev/null; then
+    git clone --quiet "$AGENT_LOCK_REPO" "$AGENT_LOCK_HOME"
+    git -C "$AGENT_LOCK_HOME" checkout --quiet "$AGENT_LOCK_REF"
   fi
 fi
 
-[ -x "$LIVEHUB_HOME/bin/agent-lock" ] || die "bin/agent-lock missing — unexpected repo layout"
+[ -x "$AGENT_LOCK_HOME/bin/agent-lock" ] || die "bin/agent-lock missing — unexpected repo layout"
 
 # --- dev deps (optional) --------------------------------------------------
-if [ "$DO_DEPS" = 1 ] && [ -f "$LIVEHUB_HOME/package.json" ] && [ ! -d "$LIVEHUB_HOME/node_modules" ]; then
+if [ "$DO_DEPS" = 1 ] && [ -f "$AGENT_LOCK_HOME/package.json" ] && [ ! -d "$AGENT_LOCK_HOME/node_modules" ]; then
   if command -v npm >/dev/null 2>&1; then
     say "installing dev dependencies (for npm test / coverage)"
-    (cd "$LIVEHUB_HOME" && npm install --no-audit --no-fund --silent) \
+    (cd "$AGENT_LOCK_HOME" && npm install --no-audit --no-fund --silent) \
       || warn "npm install failed — tests won't run, but the CLI still works"
   else
     warn "npm not found — skipping dev deps"
@@ -94,7 +94,7 @@ fi
 
 # --- symlink --------------------------------------------------------------
 pick_bin_dir() {
-  if [ -n "$LIVEHUB_BIN" ]; then printf '%s' "$LIVEHUB_BIN"; return; fi
+  if [ -n "$AGENT_LOCK_BIN" ]; then printf '%s' "$AGENT_LOCK_BIN"; return; fi
   for d in "$HOME/.local/bin" "$HOME/bin" /usr/local/bin; do
     [ -d "$d" ] || continue
     case ":$PATH:" in *":$d:"*) : ;; *) continue ;; esac
@@ -109,22 +109,22 @@ symlink_path=""
 if [ "$DO_SYMLINK" = 1 ]; then
   bin_dir=$(pick_bin_dir)
   if [ -z "$bin_dir" ]; then
-    warn "no writable bin dir on PATH found — add $LIVEHUB_HOME/bin to PATH manually"
+    warn "no writable bin dir on PATH found — add $AGENT_LOCK_HOME/bin to PATH manually"
   else
     symlink_path="$bin_dir/agent-lock"
     if [ -w "$bin_dir" ]; then
-      ln -sfn "$LIVEHUB_HOME/bin/agent-lock" "$symlink_path"
+      ln -sfn "$AGENT_LOCK_HOME/bin/agent-lock" "$symlink_path"
     else
       say "need sudo to symlink into $bin_dir"
-      sudo ln -sfn "$LIVEHUB_HOME/bin/agent-lock" "$symlink_path"
+      sudo ln -sfn "$AGENT_LOCK_HOME/bin/agent-lock" "$symlink_path"
     fi
     say "symlinked $symlink_path → bin/agent-lock"
   fi
 fi
 
 # --- done -----------------------------------------------------------------
-installed_ver=$(git -C "$LIVEHUB_HOME" describe --tags --always 2>/dev/null || printf '%s' "$LIVEHUB_REF")
-say "installed $installed_ver in $LIVEHUB_HOME"
+installed_ver=$(git -C "$AGENT_LOCK_HOME" describe --tags --always 2>/dev/null || printf '%s' "$AGENT_LOCK_REF")
+say "installed $installed_ver in $AGENT_LOCK_HOME"
 
 cat <<EOF
 
@@ -135,9 +135,9 @@ cat <<EOF
     cd /path/to/your/project && agent-lock test      end-to-end smoke test
 
   Update later:
-    curl -fsSL $LIVEHUB_REPO/raw/main/install.sh | bash
+    curl -fsSL $AGENT_LOCK_REPO/raw/main/install.sh | bash
 
   Uninstall:
-    rm -rf "$LIVEHUB_HOME"$( [ -n "$symlink_path" ] && printf ' && rm -f "%s"' "$symlink_path" )
+    rm -rf "$AGENT_LOCK_HOME"$( [ -n "$symlink_path" ] && printf ' && rm -f "%s"' "$symlink_path" )
 
 EOF
