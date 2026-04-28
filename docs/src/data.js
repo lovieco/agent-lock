@@ -41,10 +41,10 @@ export const data = {
       copiedLabel: 'Copied',
     },
     stats: [
-      { value: '100%', label: 'test coverage' },
+      { value: '1',    label: 'syscall per acquire' },
       { value: '0',    label: 'runtime deps' },
-      { value: '~600', label: 'lines of code' },
-      { value: '307',  label: 'tests' },
+      { value: '~700', label: 'lines of code' },
+      { value: '45',   label: 'tests' },
     ],
   },
 
@@ -96,38 +96,37 @@ export const data = {
   marker: {
     id: 'how',
     eyebrow: 'how it works',
-    title: 'The lock is the comment',
+    title: 'One JSON file per active edit',
     body:
-      'When an agent starts editing, agent-lock adds one comment line at the ' +
-      'top of the file naming the agent and the node. Another agent reads ' +
-      'the same line, sees a different node is wanted, adds its own marker ' +
-      'and proceeds.',
+      'When an agent picks up a file, agent-lock atomically creates a tiny ' +
+      'JSON lockfile under `.agent-lock/locks/`. Another agent that wants the ' +
+      'same file sees the lockfile already exists and is told “taken” before ' +
+      'it writes anything. Other files in the same tree stay free.',
     file: {
-      name: 'src/api/handlers.ts',
+      name: '.agent-lock/locks/',
       lines: [
-        { kind: 'marker', text: '// agent-lock lock: agent=claude-code-sess-a1b2c3d4 node=fn:handleRequest started=2026-04-24T08:41:12Z reason=Claude Code Edit', agent: 'A' },
-        { kind: 'marker', text: '// agent-lock lock: agent=claude-code-sess-e5f6g7h8 node=fn:formatResponse started=2026-04-24T08:41:15Z reason=Claude Code Edit', agent: 'B' },
-        { kind: 'code', text: "import express from 'express';" },
+        { kind: 'code', text: '$ ls .agent-lock/locks/' },
+        { kind: 'code', text: '3a7f9b2c1d4e5f60.json    b04c8e2a91f3d567.json', tag: 'A' },
         { kind: 'code', text: '' },
-        { kind: 'code', text: 'function handleRequest(req, res) {', tag: 'A' },
-        { kind: 'code', text: '  // sess-A is editing this body' },
-        { kind: 'code', text: '  return res.json({ ok: true });' },
-        { kind: 'code', text: '}' },
+        { kind: 'code', text: '$ cat .agent-lock/locks/3a7f9b2c1d4e5f60.json' },
+        { kind: 'code', text: '{', tag: 'A' },
+        { kind: 'code', text: '  "path":      "/repo/src/schema.ts",', tag: 'A' },
+        { kind: 'code', text: '  "agentId":   "claude-code-sess-a1b2c3d4",', tag: 'A' },
+        { kind: 'code', text: '  "startedAt": "2026-04-28T08:41:12Z",', tag: 'A' },
+        { kind: 'code', text: '  "ttlMs":     600000,', tag: 'A' },
+        { kind: 'code', text: '  "reason":    "Claude Code Edit"', tag: 'A' },
+        { kind: 'code', text: '}', tag: 'A' },
         { kind: 'code', text: '' },
-        { kind: 'code', text: 'function formatResponse(data) {', tag: 'B' },
-        { kind: 'code', text: '  // sess-B is editing this body' },
-        { kind: 'code', text: '  return JSON.stringify(data);' },
-        { kind: 'code', text: '}' },
+        { kind: 'code', text: '$ cat .agent-lock/locks/b04c8e2a91f3d567.json' },
+        { kind: 'code', text: '{ "path": "/repo/src/api/routes.ts", "agentId": "claude-code-sess-e5f6g7h8", ... }', tag: 'B' },
         { kind: 'code', text: '' },
-        { kind: 'code', text: 'function parseInput(raw) {', tag: 'free' },
-        { kind: 'code', text: '  // anyone else can edit this' },
-        { kind: 'code', text: '}' },
+        { kind: 'code', text: '# everything else in /repo is free for any other agent', tag: 'free' },
       ],
     },
     legend: [
-      { swatch: 'A',    label: 'session A holds fn:handleRequest' },
-      { swatch: 'B',    label: 'session B holds fn:formatResponse' },
-      { swatch: 'free', label: 'parseInput is free — any third agent can take it' },
+      { swatch: 'A',    label: 'session A holds src/schema.ts' },
+      { swatch: 'B',    label: 'session B holds src/api/routes.ts' },
+      { swatch: 'free', label: 'every other file is free — any third agent can take it' },
     ],
   },
 
@@ -152,13 +151,13 @@ export const data = {
       },
       {
         name: 'Rules',
-        path: '.agent-lock/lock/*.cjs',
-        role: 'semantic.cjs locates the node. file-lock.cjs decides collisions and staleness. Pure Node, zero deps.',
+        path: '.agent-lock/lock/file-lock.cjs',
+        role: 'acquire / release / withLock. Decides collisions and staleness. Pure Node, zero deps.',
       },
       {
         name: 'State',
-        path: 'the source files themselves',
-        role: 'One marker comment per active lock at the top of the file. No sidecar database.',
+        path: '.agent-lock/locks/*.json',
+        role: 'One JSON file per active lock. `ls` is the source of truth. No database.',
       },
     ],
     sidecar: {
