@@ -21,6 +21,16 @@ const h = (tag, attrs = {}, ...kids) => {
   return el;
 };
 
+// Render a string with `backticked` spans as inline <code>.
+const richText = (str) => {
+  const parts = String(str).split(/(`[^`]+`)/g);
+  return parts.map(p =>
+    p.startsWith('`') && p.endsWith('`')
+      ? h('code', null, p.slice(1, -1))
+      : p,
+  );
+};
+
 // ---------- sections ----------
 
 function Nav({ brand, brandTag, links }) {
@@ -179,6 +189,68 @@ function Architecture({ id, eyebrow, title, body, layers, sidecar }) {
   );
 }
 
+function Design({ id, eyebrow, title, body, principles, lifecycle }) {
+  return h('section', { id },
+    h('div', { class: 'container' },
+      h('div', { class: 'eyebrow' }, eyebrow),
+      h('h2', null, title),
+      h('p', { class: 'lead' }, ...richText(body)),
+
+      h('div', { class: 'principles' },
+        ...principles.map(p => h('div', { class: 'principle' },
+          h('div', { class: 'name' }, p.name),
+          h('div', { class: 'role' }, ...richText(p.body)),
+        )),
+      ),
+
+      h('div', { class: 'lifecycle' },
+        h('div', { class: 'head' }, lifecycle.label),
+        h('pre', null, lifecycle.lines.join('\n')),
+      ),
+    ),
+  );
+}
+
+function Schema({ id, eyebrow, title, body, file, fields, stale }) {
+  return h('section', { id },
+    h('div', { class: 'container' },
+      h('div', { class: 'eyebrow' }, eyebrow),
+      h('h2', null, title),
+      h('p', { class: 'lead' }, ...richText(body)),
+
+      h('div', { class: 'file schema-file' },
+        h('div', { class: 'titlebar' },
+          h('span', { class: 'traffic' }, h('span'), h('span'), h('span')),
+          h('span', { class: 'filename' }, file.name),
+        ),
+        h('div', { class: 'body' },
+          h('div', { class: 'gutter' },
+            ...file.lines.map((_, i) => h('div', null, String(i + 1))),
+          ),
+          h('div', { class: 'lines' },
+            ...file.lines.map(l => h('span', { class: 'ln code' }, l || ' ')),
+          ),
+        ),
+      ),
+
+      h('div', { class: 'fields' },
+        ...fields.map(f => h('div', { class: 'field-row' },
+          h('div', { class: 'field-name' },
+            h('code', null, f.name),
+            h('span', { class: 'field-type' }, f.type),
+          ),
+          h('div', { class: 'field-role' }, ...richText(f.role)),
+        )),
+      ),
+
+      h('div', { class: 'stale' },
+        h('div', { class: 'head' }, stale.label),
+        h('ul', null, ...stale.rules.map(r => h('li', null, ...richText(r)))),
+      ),
+    ),
+  );
+}
+
 function Install({ id, eyebrow, title, steps, requirements }) {
   return h('section', { id },
     h('div', { class: 'container' },
@@ -222,6 +294,8 @@ app.append(
   Pitch(data.pitch),
   MarkerDemo(data.marker),
   Architecture(data.architecture),
+  Design(data.design),
+  Schema(data.schema),
   Install(data.install),
   Footer(data.footer),
 );

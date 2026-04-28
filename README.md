@@ -1,8 +1,10 @@
 # agent-lock
 
-**Pessimistic file-level locking for Claude Code agents working in the same checkout.**
+**Live multi-agent coding in one shared checkout — no branches, no PRs, no merge.**
 
-A tiny coordination layer that lets you run *N* AI agents against one project tree without them silently clobbering each other's work.
+In Google Docs, Figma, and Notion, two people editing the same file at the same time is normal. Code is the last holdout: every change still goes through a branch, a PR, and a merge conflict. That loop made sense when humans were the only writers. With multiple AI agents in one repo, it's the bottleneck.
+
+agent-lock lets every agent edit the same tree at the same time. When one starts editing a file, the others see "taken, try another" — and pick a different file or wait a few seconds. The whole thing is one tiny lockfile per active edit. That's the whole protocol.
 
 ---
 
@@ -24,6 +26,26 @@ A tiny coordination layer that lets you run *N* AI agents against one project tr
   whoever wrote last wins.
   The other agent's edits — gone, silently.
 ```
+
+### The status quo: branch → PR → human merge
+
+The standard workaround today is to give each agent its own branch (or worktree) and reconcile at merge time:
+
+```
+  Agent A: branch ─► edit ─► PR ─┐
+                                  ├─► conflict ─► human merge ─► retry
+  Agent B: branch ─► edit ─► PR ─┘                    ▲
+                                                       │
+                                          you, manually, every time
+
+  Cost paid: at the END, by you.
+  Cost scales: O(N²) in the number of agents touching the same file.
+  Cost is invisible until: the PR opens and the diff lands on your desk.
+```
+
+Two agents that both touched `schema.ts` in isolation produce two plausible-looking diffs. Reconciling them requires understanding what *each* agent was trying to do, which neither agent can see and a merge tool can't infer. So the work falls on you — once per pair of overlapping branches, every time you run more than one agent.
+
+agent-lock flips the timing: the cost is paid up-front, by one syscall, before either agent writes anything.
 
 It is tempting to wave this away with "the filesystem will serialize the writes" — and it does, byte-for-byte, but that doesn't help you. Each agent reads the file, decides what to change based on what it read, and writes the result. If A reads, then B reads, then A writes, then B writes — B's write contains none of A's changes. The filesystem behaved correctly. The collaboration didn't.
 

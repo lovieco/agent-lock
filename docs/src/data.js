@@ -3,7 +3,7 @@
 
 export const data = {
   meta: {
-    title: 'livehub — live multi-agent coding without the merge',
+    title: 'agent-lock — live multi-agent coding without the merge',
     description:
       'A Claude Code skill that lets multiple agents share one tree, ' +
       'locking at the function level instead of the file level. No branches, ' +
@@ -11,14 +11,16 @@ export const data = {
   },
 
   nav: {
-    brand: 'livehub',
+    brand: 'agent-lock',
     brandTag: 'v0.1',
     links: [
       { href: '#why',          label: 'Why' },
       { href: '#how',          label: 'How' },
       { href: '#architecture', label: 'Architecture' },
+      { href: '#design',       label: 'Design' },
+      { href: '#schema',       label: 'Schema' },
       { href: '#install',      label: 'Install' },
-      { href: 'https://github.com/lovieco/livehub', label: 'GitHub', external: true },
+      { href: 'https://github.com/lovieco/agent-lock', label: 'GitHub', external: true },
     ],
   },
 
@@ -26,13 +28,15 @@ export const data = {
     eyebrow: 'live agentic development',
     title: ['Skip the merge.', 'Just edit.'],
     body:
-      'livehub lets multiple Claude Code sessions work in the same tree — ' +
-      'and locks at the function level, not the file level. Two agents can ' +
-      'edit different functions in the same file at the same time.',
+      'Google Docs, Figma, Notion — everywhere else we edit together, live. ' +
+      'For code we still use branches, PRs, and merge conflicts. ' +
+      'With multiple agents in one repo, we can finally do better. ' +
+      'agent-lock lets every agent edit the same tree at the same time — ' +
+      'no branches, no PRs, no merge.',
     install: {
       label: 'one-liner install',
       command:
-        'curl -fsSL https://raw.githubusercontent.com/lovieco/livehub/main/install.sh | bash',
+        'curl -fsSL https://raw.githubusercontent.com/lovieco/agent-lock/main/install.sh | bash',
       copyLabel: 'Copy',
       copiedLabel: 'Copied',
     },
@@ -47,42 +51,44 @@ export const data = {
   pitch: {
     id: 'why',
     eyebrow: 'the idea',
-    title: 'The branch/PR loop is the bottleneck',
+    title: 'Code is the last thing we still merge',
     body:
-      'Most multi-agent setups isolate each agent on its own branch or ' +
-      'worktree, then pay the coordination cost at merge time. livehub ' +
-      'flips that — coordinate at edit time, not merge time.',
+      'In Docs, Figma, Notion, two people typing in the same file is normal. ' +
+      'Code is the holdout — every change still goes through a branch, a PR, ' +
+      'and a merge. With multi-agent coding, that loop is the bottleneck. ' +
+      'agent-lock removes it: agents share one tree and take turns on a file, ' +
+      'one at a time, for a few seconds each. No branches. No PRs. No merge.',
     flows: [
       {
         kind: 'branch',
         label: 'branch / PR workflow',
-        steps: ['branch', 'change', 'PR', 'conflicts', 'merge', 'repeat'],
-        verdict: 'pain compounds with every extra agent',
+        steps: ['branch', 'edit', 'PR', 'conflict', 'human merge', 'retry'],
+        verdict: 'merge cost is paid by you, after the work is done',
       },
       {
-        kind: 'livehub',
-        label: 'livehub live edit',
-        steps: ['lock(node)', 'edit', 'unlock', 'next agent'],
-        verdict: 'lock contention stays local to each function',
+        kind: 'agent-lock',
+        label: 'agent-lock live edit',
+        steps: ['acquire', 'edit', 'release'],
+        verdict: 'collision is detected before the first byte is written',
       },
     ],
     blocked: {
       label: 'what a colliding agent sees',
       lines: [
-        '[livehub] BLOCKED: src/schema.ts (node fn:userSchema) is locked',
-        'by agent "claude-code-sess-a1b2c3d4" since 2026-04-23T00:41:12Z',
-        '(4s ago, reason: Claude Code Edit). Wait, work on a different node,',
-        'or set CLAUDE_FILE_LOCK=0 to override.',
+        '[agent-lock] BLOCKED: src/schema.ts is locked by agent',
+        '"claude-code-sess-a1b2c3d4" since 2026-04-27T00:41:12Z (4s ago,',
+        'reason: Claude Code Edit). Wait, edit a different file, or set',
+        'CLAUDE_FILE_LOCK=0 to override.',
       ],
     },
     table: {
-      head: ['', 'branch / PR', 'livehub'],
+      head: ['', 'branch / PR', 'agent-lock'],
       rows: [
-        ['unit of coordination', 'the file',         'the top-level declaration'],
-        ['when coordination happens', 'at merge (after work)', 'at edit (before work)'],
-        ['failure mode',         'silent merge regressions', 'loud BLOCKED exit, agent retries'],
-        ['state visible in',     'git log, PR diffs', 'the file itself'],
-        ['scaling N agents',     'merge pain ~ O(N²)', 'lock contention stays local'],
+        ['when coordination happens', 'at merge (after work)', 'at acquire (before work)'],
+        ['who pays the cost',         'you, manually',         'one O_EXCL syscall'],
+        ['failure mode',              'silent lost-update',    'loud BLOCKED, agent retries'],
+        ['state lives in',            'PRs, git log, your head', '.agent-lock/locks/*.json'],
+        ['scales with N agents',      'merge pain ~ O(N²)',    'one lockdir, no extra cost'],
       ],
     },
   },
@@ -92,15 +98,15 @@ export const data = {
     eyebrow: 'how it works',
     title: 'The lock is the comment',
     body:
-      'When an agent starts editing, livehub adds one comment line at the ' +
+      'When an agent starts editing, agent-lock adds one comment line at the ' +
       'top of the file naming the agent and the node. Another agent reads ' +
       'the same line, sees a different node is wanted, adds its own marker ' +
       'and proceeds.',
     file: {
       name: 'src/api/handlers.ts',
       lines: [
-        { kind: 'marker', text: '// livehub lock: agent=claude-code-sess-a1b2c3d4 node=fn:handleRequest started=2026-04-24T08:41:12Z reason=Claude Code Edit', agent: 'A' },
-        { kind: 'marker', text: '// livehub lock: agent=claude-code-sess-e5f6g7h8 node=fn:formatResponse started=2026-04-24T08:41:15Z reason=Claude Code Edit', agent: 'B' },
+        { kind: 'marker', text: '// agent-lock lock: agent=claude-code-sess-a1b2c3d4 node=fn:handleRequest started=2026-04-24T08:41:12Z reason=Claude Code Edit', agent: 'A' },
+        { kind: 'marker', text: '// agent-lock lock: agent=claude-code-sess-e5f6g7h8 node=fn:formatResponse started=2026-04-24T08:41:15Z reason=Claude Code Edit', agent: 'B' },
         { kind: 'code', text: "import express from 'express';" },
         { kind: 'code', text: '' },
         { kind: 'code', text: 'function handleRequest(req, res) {', tag: 'A' },
@@ -131,7 +137,7 @@ export const data = {
     title: 'Four layers, one tree',
     body:
       'Agents make tool calls. Hooks intercept them. Rules decide. State ' +
-      'lives inside the source files themselves — `grep "livehub lock:"` ' +
+      'lives inside the source files themselves — `grep "agent-lock lock:"` ' +
       'is the source of truth.',
     layers: [
       {
@@ -141,12 +147,12 @@ export const data = {
       },
       {
         name: 'Hooks',
-        path: '.livehub/hooks/*.mjs',
+        path: '.agent-lock/hooks/*.mjs',
         role: 'PreToolUse acquires or blocks. PostToolUse releases. SessionEnd purges stale.',
       },
       {
         name: 'Rules',
-        path: '.livehub/lock/*.cjs',
+        path: '.agent-lock/lock/*.cjs',
         role: 'semantic.cjs locates the node. file-lock.cjs decides collisions and staleness. Pure Node, zero deps.',
       },
       {
@@ -162,6 +168,146 @@ export const data = {
     },
   },
 
+  design: {
+    id: 'design',
+    eyebrow: 'design',
+    title: 'One syscall is the whole protocol',
+    body:
+      'agent-lock’s correctness rests on `open(O_CREAT | O_EXCL)`. POSIX ' +
+      'guarantees that, under concurrent callers, at most one creates the ' +
+      'lockfile and the rest fail with EEXIST. No daemon, no database, no ' +
+      'kernel mutex — just a directory we can creat into.',
+    principles: [
+      {
+        name: 'Central lockdir, not per-file markers',
+        body:
+          'v1 wrote `// agent-lock lock: …` into the top of each protected file. ' +
+          'That changed the file’s hash mid-edit, broke Edit-tool hash checks, ' +
+          'forced per-language comment styles, and required shebang gymnastics. ' +
+          'A central `.agent-lock/locks/` directory eliminates all four.',
+      },
+      {
+        name: 'Whole-file scope',
+        body:
+          'Per-declaration (“semantic”) locks looked elegant but the parser ' +
+          'was fragile and agents mostly do whole-file rewrites anyway. ' +
+          'Whole-file is simpler, has no false positives, and matches how ' +
+          'agents actually behave.',
+      },
+      {
+        name: 'No file mutation',
+        body:
+          'Lock state never lives inside your source. `git diff` shows your ' +
+          'work, not lock acquisition. `grep` from inside the codebase is no ' +
+          'longer self-referential.',
+      },
+      {
+        name: 'Two states, two transitions',
+        body:
+          'The lockfile is either present (held) or absent (free). Acquire ' +
+          'creates it; release unlinks it. Stale-sweep is just release fired ' +
+          'from `SessionEnd`. There is no “expiring” state, no lease, no renew.',
+      },
+      {
+        name: 'Stateless tooling',
+        body:
+          'Every CLI command is a pure read or write of `.agent-lock/locks/`. ' +
+          'No caching, no warm-up, no migrations. `ls .agent-lock/locks/` is ' +
+          'the source of truth for what is held right now.',
+      },
+      {
+        name: 'Cheap retry, expensive overwrite',
+        body:
+          'Agents pay near-zero cost when told “no, retry later.” They pay an ' +
+          'invisible, debugging-hours cost when a lost update survives into ' +
+          'tests. Pessimistic locking trades the cheap cost for the expensive one.',
+      },
+    ],
+    lifecycle: {
+      label: 'lockfile lifecycle',
+      lines: [
+        '  ┌──────────┐   acquire (O_EXCL)    ┌──────────┐',
+        '  │  absent  │  ───────────────────► │   held   │',
+        '  └──────────┘                       └──────────┘',
+        '       ▲                                   │',
+        '       │  release (unlink)                 │',
+        '       │  or stale-sweep on SessionEnd     │',
+        '       └───────────────────────────────────┘',
+      ],
+    },
+  },
+
+  schema: {
+    id: 'schema',
+    eyebrow: 'schema',
+    title: 'The lockfile, in 200 bytes',
+    body:
+      'Every active lock is one JSON file under `.agent-lock/locks/`, named ' +
+      '`sha1(absPath).slice(0,16) + ".json"`. Five fields, no envelope.',
+    file: {
+      name: '.agent-lock/locks/3a7f9b2c1d4e5f60.json',
+      lines: [
+        '{',
+        '  "path":      "/abs/path/to/src/schema.ts",',
+        '  "agentId":   "claude-code-sess-a1b2c3d4",',
+        '  "startedAt": "2026-04-27T15:00:00.000Z",',
+        '  "ttlMs":     600000,',
+        '  "reason":    "Claude Code Edit"',
+        '}',
+      ],
+    },
+    fields: [
+      {
+        name: 'path',
+        type: 'string (absolute path)',
+        role:
+          'The file this lock protects. Stored explicitly so `agent-lock list` ' +
+          'doesn’t have to reverse the SHA-1 hash in the filename.',
+      },
+      {
+        name: 'agentId',
+        type: 'string',
+        role:
+          'Identifier of the holder. For Claude Code: ' +
+          '`claude-code-sess-<first-8-chars-of-session-id>`. For your own ' +
+          'scripts: anything you pass to `withLock`.',
+      },
+      {
+        name: 'startedAt',
+        type: 'string (ISO 8601)',
+        role:
+          'When the lock was acquired. Basis for stale detection. Treated as ' +
+          'stale if missing, unparseable, ≤ epoch, in the future, or older ' +
+          'than `ttlMs`.',
+      },
+      {
+        name: 'ttlMs',
+        type: 'number (ms)',
+        role:
+          'How long this lock may be held before stale-eligible. Default ' +
+          '600000 (10 minutes). Caps the worst-case stuck-lock duration ' +
+          'after a crash.',
+      },
+      {
+        name: 'reason',
+        type: 'string',
+        role:
+          'Free-form human-readable label. Surfaced in the BLOCKED message ' +
+          'so the second agent knows what the first one was doing.',
+      },
+    ],
+    stale: {
+      label: 'a lock is stale if any of these hold',
+      rules: [
+        '`startedAt` is missing',
+        '`startedAt` is not a parseable ISO date',
+        '`startedAt` parses to ≤ 0 (epoch or before)',
+        '`startedAt` is in the future (`> Date.now()`)',
+        '`Date.now() - startedAt >= ttlMs`',
+      ],
+    },
+  },
+
   install: {
     id: 'install',
     eyebrow: 'install',
@@ -171,19 +317,19 @@ export const data = {
         n: '01',
         label: 'Install the CLI',
         command:
-          'curl -fsSL https://raw.githubusercontent.com/lovieco/livehub/main/install.sh | bash',
-        note: 'clones to ~/.livehub-core, symlinks `livehub` onto your PATH',
+          'curl -fsSL https://raw.githubusercontent.com/lovieco/agent-lock/main/install.sh | bash',
+        note: 'clones to ~/.agent-lock-core, symlinks `agent-lock` onto your PATH',
       },
       {
         n: '02',
         label: 'Wire a project',
-        command: 'livehub install /path/to/your/project',
+        command: 'agent-lock install /path/to/your/project',
         note: 'copies hooks + skill, patches .claude/settings.json',
       },
       {
         n: '03',
         label: 'Verify',
-        command: 'livehub test',
+        command: 'agent-lock test',
         note: 'simulates acquire / collision / release end-to-end',
       },
     ],
@@ -191,7 +337,7 @@ export const data = {
   },
 
   footer: {
-    text: 'livehub · MIT-licensed · built for Claude Code',
-    link: { label: 'lovieco/livehub on GitHub', href: 'https://github.com/lovieco/livehub' },
+    text: 'agent-lock · MIT-licensed · built for Claude Code',
+    link: { label: 'lovieco/agent-lock on GitHub', href: 'https://github.com/lovieco/agent-lock' },
   },
 };
