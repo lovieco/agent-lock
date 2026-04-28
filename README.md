@@ -43,13 +43,13 @@ The standard workaround today is to give each agent its own branch (or worktree)
   Cost is invisible until: the PR opens and the diff lands on your desk.
 ```
 
-Two agents that both touched `schema.ts` in isolation produce two plausible-looking diffs. Reconciling them requires understanding what *each* agent was trying to do, which neither agent can see and a merge tool can't infer. So the work falls on you — once per pair of overlapping branches, every time you run more than one agent.
+When two agents both edit `schema.ts` on their own branches, you end up with two diffs that each look fine on their own. You're the one who has to read both, figure out what each agent was trying to do, and stitch them together. A merge tool can't do this for you — it doesn't know the intent. And it happens every time two agents overlap.
 
-agent-lock flips the timing: the cost is paid up-front, by one syscall, before either agent writes anything.
+agent-lock changes when you pay that cost. Instead of paying it at the end (by hand), you pay it at the start: one of the agents is told "this file is taken, pick another" before it writes a single byte.
 
-It is tempting to wave this away with "the filesystem will serialize the writes" — and it does, byte-for-byte, but that doesn't help you. Each agent reads the file, decides what to change based on what it read, and writes the result. If A reads, then B reads, then A writes, then B writes — B's write contains none of A's changes. The filesystem behaved correctly. The collaboration didn't.
+You might think the filesystem already handles this — and it does, in a useless way. Both agents' writes go through, just one after the other. But each agent decided what to write *before* the other one's changes existed. So the second write wipes out the first one's work. Nothing crashed. Nothing looks wrong. The edits are just gone.
 
-This is a *lost-update* bug, the canonical concurrency hazard, and it is undetectable by tests, by `git diff`, or by reading the resulting file. The only signal you get is that something an agent told you it did is no longer there.
+This is the classic "lost update" problem. You can't catch it with tests or `git diff` — the file looks fine. The only sign is that something an agent claimed to do isn't there anymore.
 
 ## The fix in one picture
 
