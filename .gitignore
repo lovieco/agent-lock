@@ -13,9 +13,13 @@ Thumbs.db
 .claude/launch.json
 .claude/settings.local.json
 
+# Active lockfiles — runtime state, per-checkout, never source-tracked.
+.agent-lock/locks/
+
 # Critical-section sidecars left over from crashed acquires (auto-cleared
 # after 2s by the next acquire, but never source-tracked).
 *.lh-crit
 
 # Sidecar markers for unsupported extensions — runtime state, not source.
 *.livehub-lock
+*.agent-lock

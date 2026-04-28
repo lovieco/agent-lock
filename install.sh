@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# livehub installer — clone, wire up, symlink onto PATH.
+# agent-lock installer — clone, wire up, symlink onto PATH.
 #
 # One-liner:
-#   curl -fsSL https://raw.githubusercontent.com/lovieco/livehub/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/lovieco/agent-lock/main/install.sh | bash
 #
 # Or with options:
 #   curl -fsSL .../install.sh | bash -s -- --ref v0.1.0 --bin ~/.local/bin
 #
 # Env / flags:
-#   --home <dir>    where to clone the repo (default: ~/.livehub-core)
-#   --repo <url>    source git URL         (default: https://github.com/lovieco/livehub.git)
+#   --home <dir>    where to clone the repo (default: ~/.agent-lock-core)
+#   --repo <url>    source git URL         (default: https://github.com/lovieco/agent-lock.git)
 #   --ref  <ref>    branch / tag / commit  (default: main)
 #   --bin  <dir>    where to symlink the CLI (default: auto-detect from PATH)
 #   --no-symlink    skip the PATH symlink step
@@ -17,19 +17,19 @@
 #
 # What it does (in order):
 #   1. Verifies Node >= 16 and git are installed.
-#   2. Clones (or updates) the livehub repo into --home.
+#   2. Clones (or updates) the agent-lock repo into --home.
 #   3. Runs `npm install` for the test suite (unless --no-deps).
-#   4. Symlinks <home>/bin/livehub into a writable dir on your PATH.
+#   4. Symlinks <home>/bin/agent-lock into a writable dir on your PATH.
 #   5. Prints next-step commands.
 #
 # The install script does NOT touch any of your projects. It just makes the
-# `livehub` CLI available; per-project wiring happens when you run
-# `livehub install /path/to/project` later.
+# `agent-lock` CLI available; per-project wiring happens when you run
+# `agent-lock install /path/to/project` later.
 
 set -euo pipefail
 
-LIVEHUB_HOME="${LIVEHUB_HOME:-$HOME/.livehub-core}"
-LIVEHUB_REPO="${LIVEHUB_REPO:-https://github.com/lovieco/livehub.git}"
+LIVEHUB_HOME="${LIVEHUB_HOME:-$HOME/.agent-lock-core}"
+LIVEHUB_REPO="${LIVEHUB_REPO:-https://github.com/lovieco/agent-lock.git}"
 LIVEHUB_REF="${LIVEHUB_REF:-main}"
 LIVEHUB_BIN="${LIVEHUB_BIN:-}"
 DO_SYMLINK=1
@@ -54,9 +54,9 @@ done
 # --- logging --------------------------------------------------------------
 if [ -t 1 ]; then C="\033[1;36m"; Y="\033[1;33m"; R="\033[1;31m"; X="\033[0m"
 else               C=""; Y=""; R=""; X=""; fi
-say()  { printf "${C}[livehub]${X} %s\n" "$*"; }
-warn() { printf "${Y}[livehub]${X} %s\n" "$*" >&2; }
-die()  { printf "${R}[livehub]${X} %s\n" "$*" >&2; exit 1; }
+say()  { printf "${C}[agent-lock]${X} %s\n" "$*"; }
+warn() { printf "${Y}[agent-lock]${X} %s\n" "$*" >&2; }
+die()  { printf "${R}[agent-lock]${X} %s\n" "$*" >&2; exit 1; }
 
 # --- pre-flight -----------------------------------------------------------
 command -v node >/dev/null 2>&1 || die "node is required (https://nodejs.org)"
@@ -79,7 +79,7 @@ else
   fi
 fi
 
-[ -x "$LIVEHUB_HOME/bin/livehub" ] || die "bin/livehub missing — unexpected repo layout"
+[ -x "$LIVEHUB_HOME/bin/agent-lock" ] || die "bin/agent-lock missing — unexpected repo layout"
 
 # --- dev deps (optional) --------------------------------------------------
 if [ "$DO_DEPS" = 1 ] && [ -f "$LIVEHUB_HOME/package.json" ] && [ ! -d "$LIVEHUB_HOME/node_modules" ]; then
@@ -111,14 +111,14 @@ if [ "$DO_SYMLINK" = 1 ]; then
   if [ -z "$bin_dir" ]; then
     warn "no writable bin dir on PATH found — add $LIVEHUB_HOME/bin to PATH manually"
   else
-    symlink_path="$bin_dir/livehub"
+    symlink_path="$bin_dir/agent-lock"
     if [ -w "$bin_dir" ]; then
-      ln -sfn "$LIVEHUB_HOME/bin/livehub" "$symlink_path"
+      ln -sfn "$LIVEHUB_HOME/bin/agent-lock" "$symlink_path"
     else
       say "need sudo to symlink into $bin_dir"
-      sudo ln -sfn "$LIVEHUB_HOME/bin/livehub" "$symlink_path"
+      sudo ln -sfn "$LIVEHUB_HOME/bin/agent-lock" "$symlink_path"
     fi
-    say "symlinked $symlink_path → bin/livehub"
+    say "symlinked $symlink_path → bin/agent-lock"
   fi
 fi
 
@@ -130,9 +130,9 @@ cat <<EOF
 
   Next steps:
 
-    livehub help                                  show usage
-    livehub install /path/to/your/project         wire a project up
-    cd /path/to/your/project && livehub test      end-to-end smoke test
+    agent-lock help                                  show usage
+    agent-lock install /path/to/your/project         wire a project up
+    cd /path/to/your/project && agent-lock test      end-to-end smoke test
 
   Update later:
     curl -fsSL $LIVEHUB_REPO/raw/main/install.sh | bash

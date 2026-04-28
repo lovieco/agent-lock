@@ -22,7 +22,7 @@ function _hookExit() {
 }
 
 /** Create a temp directory that is auto-cleaned at process exit. */
-function makeTmpDir(prefix = 'livehub-test-') {
+function makeTmpDir(prefix = 'agent-lock-test-') {
   _hookExit();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   _cleanup.push(dir);
@@ -42,7 +42,7 @@ function readFile(p) {
   return fs.readFileSync(p, 'utf-8');
 }
 
-/** Absolute path to the livehub repo root. */
+/** Absolute path to the agent-lock repo root. */
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 
 /** Absolute path to a file inside the repo. */
@@ -64,10 +64,10 @@ function runHook(scriptPath, payload, { env } = {}) {
 }
 
 /**
- * Run the livehub CLI with the given args. Returns { status, stdout, stderr }.
+ * Run the agent-lock CLI with the given args. Returns { status, stdout, stderr }.
  */
 function runCli(args, { cwd, env } = {}) {
-  const r = spawnSync('node', [repo('bin/livehub'), ...args], {
+  const r = spawnSync('node', [repo('bin/agent-lock'), ...args], {
     cwd: cwd || process.cwd(),
     encoding: 'utf-8',
     env: { ...process.env, ...(env || {}) },

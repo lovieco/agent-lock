@@ -1,0 +1,418 @@
+#!/usr/bin/env node
+// agent-lock — install, uninstall, and manage the file-lock skill in any project.
+//
+// Usage:
+//   agent-lock install   [<target-dir>]   copy files + wire .claude/settings.json
+//   agent-lock uninstall [<target-dir>]   strip settings.json + remove copied files
+//   agent-lock status    [<target-dir>]   show install state + active locks
+//   agent-lock list      [<target-dir>]   list every locked file in the project
+//   agent-lock release   <file>           force-release one file's lock
+//   agent-lock release-mine <session-prefix> [<target-dir>]   release every lock held by claude-code-sess-<prefix>
+//   agent-lock purge-all [<target-dir>]   release every active lock
+//   agent-lock on | off  [<target-dir>]   toggle CLAUDE_FILE_LOCK kill-switch
+//   agent-lock watch     [<target-dir>] [--once]   live TUI of active locks, refreshed every 1s
+//   agent-lock doctor    [<target-dir>]   audit lockdir for stale / orphan / future-dated markers
+//   agent-lock test      [<target-dir>]   simulate acquire / collision / release
+//   agent-lock help                       this message
+
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+
+const PKG_ROOT = path.resolve(__dirname, '..');
+const SRC_LOCK = path.join(PKG_ROOT, 'lock');
+const SRC_HOOKS = path.join(PKG_ROOT, 'hooks');
+const SRC_SKILL = path.join(PKG_ROOT, 'skill');
+
+const argv = process.argv.slice(2);
+const cmd = argv[0] || 'help';
+const targetArg = argv[1];
+
+function resolveTarget(arg) {
+  return path.resolve(arg || process.cwd());
+}
+
+function paths(target) {
+  return {
+    target,
+    install: path.join(target, '.agent-lock'),
+    installLock: path.join(target, '.agent-lock/lock'),
+    installHooks: path.join(target, '.agent-lock/hooks'),
+    locksDir: path.join(target, '.agent-lock/locks'),
+    settings: path.join(target, '.claude/settings.json'),
+    skillDir: path.join(target, '.claude/skills/file-lock'),
+  };
+}
+
+function copyDir(src, dst) {
+  try {
+    fs.mkdirSync(dst, { recursive: true });
+    for (const ent of fs.readdirSync(src, { withFileTypes: true })) {
+      const s = path.join(src, ent.name);
+      const d = path.join(dst, ent.name);
+      if (ent.isDirectory()) copyDir(s, d);
+      else { fs.copyFileSync(s, d); fs.chmodSync(d, ent.name.endsWith('.mjs') ? 0o755 : 0o644); }
+    }
+  } catch (e) {
+    die(`agent-lock: failed to copy ${src} -> ${dst}: ${e.message}`);
+  }
+}
+
+function readSettings(p) {
+  if (!fs.existsSync(p)) return {};
+  try { return JSON.parse(fs.readFileSync(p, 'utf-8')); }
+  catch (e) { die(`agent-lock: cannot parse ${p}: ${e.message}`); }
+}
+function writeSettings(p, s) {
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(s, null, 2) + '\n');
+}
+
+function isLivehubHook(h) {
+  return typeof h?.command === 'string'
+    && (h.command.includes('/agent-lock/hooks/file-lock-') || h.command.includes('.agent-lock/hooks/file-lock-'));
+}
+
+function injectHook(hooks, event, matcher, scriptRel, timeout) {
+  hooks[event] = hooks[event] || [];
+  let group = matcher
+    ? hooks[event].find(g => g.matcher === matcher)
+    : hooks[event].find(g => !g.matcher);
+  if (!group) {
+    group = matcher ? { matcher, hooks: [] } : { hooks: [] };
+    hooks[event].push(group);
+  }
+  group.hooks = group.hooks || [];
+  // Replace any prior agent-lock entry for this script (handles re-installs).
+  group.hooks = group.hooks.filter(h => !(typeof h.command === 'string' && h.command.includes(path.basename(scriptRel))));
+  // No `sh -c` — direct node invocation. CLAUDE_PROJECT_DIR is read by the
+  // hook script itself, so the command line stays free of shell metacharacters.
+  group.hooks.unshift({
+    type: 'command',
+    command: `node ${JSON.stringify('${CLAUDE_PROJECT_DIR}/' + scriptRel)}`,
+    timeout,
+  });
+}
+
+function cmdHelp() {
+  const src = fs.readFileSync(__filename, 'utf-8').split('\n');
+  const start = src.findIndex(l => l.startsWith('// agent-lock'));
+  const end = src.findIndex((l, i) => i > start && !l.startsWith('//'));
+  console.log(src.slice(start, end).join('\n').replace(/^\/\/ ?/gm, ''));
+}
+
+function cmdInstall() {
+  const t = resolveTarget(targetArg);
+  const p = paths(t);
+
+  copyDir(SRC_LOCK, p.installLock);
+  copyDir(SRC_HOOKS, p.installHooks);
+  copyDir(SRC_SKILL, p.skillDir);
+  fs.mkdirSync(p.locksDir, { recursive: true });
+  console.log(`copied to ${path.relative(t, p.install)}/ and ${path.relative(t, p.skillDir)}/`);
+
+  const s = readSettings(p.settings);
+  s.hooks = s.hooks || {};
+  injectHook(s.hooks, 'PreToolUse',  'Write|Edit|MultiEdit', '.agent-lock/hooks/file-lock-pre.mjs',   5000);
+  injectHook(s.hooks, 'PostToolUse', 'Write|Edit|MultiEdit', '.agent-lock/hooks/file-lock-post.mjs',  5000);
+  injectHook(s.hooks, 'SessionEnd',  null,                   '.agent-lock/hooks/file-lock-purge.mjs', 5000);
+  writeSettings(p.settings, s);
+  console.log(`wired ${path.relative(t, p.settings)} -> ${PKG_ROOT}`);
+  console.log('\ninstalled. run `agent-lock status` to verify, or `agent-lock test` to smoke-test.');
+}
+
+function cmdUninstall() {
+  const t = resolveTarget(targetArg);
+  const p = paths(t);
+
+  if (fs.existsSync(p.settings)) {
+    const s = readSettings(p.settings);
+    for (const event of ['PreToolUse', 'PostToolUse', 'SessionEnd']) {
+      for (const group of s.hooks?.[event] || []) {
+        group.hooks = (group.hooks || []).filter(h => !isLivehubHook(h));
+      }
+    }
+    writeSettings(p.settings, s);
+    console.log(`stripped hooks from ${path.relative(t, p.settings)}`);
+  }
+  if (fs.existsSync(p.install)) {
+    fs.rmSync(p.install, { recursive: true, force: true });
+    console.log(`removed ${path.relative(t, p.install)}/`);
+  }
+  if (fs.existsSync(p.skillDir)) {
+    fs.rmSync(p.skillDir, { recursive: true, force: true });
+    console.log(`removed ${path.relative(t, p.skillDir)}/`);
+  }
+  console.log('\nuninstalled.');
+}
+
+function hooksWired(s) {
+  const flatten = a => (a || []).flatMap(g => g.hooks || []);
+  return ['PreToolUse', 'PostToolUse', 'SessionEnd'].every(ev =>
+    flatten(s.hooks?.[ev]).some(isLivehubHook));
+}
+
+function cmdStatus() {
+  const t = resolveTarget(targetArg);
+  const p = paths(t);
+  const filesPresent = ['file-lock-pre.mjs', 'file-lock-post.mjs', 'file-lock-purge.mjs']
+    .every(f => fs.existsSync(path.join(p.installHooks, f)))
+    && fs.existsSync(path.join(p.installLock, 'file-lock.cjs'));
+  let wired = false, kill = false;
+  if (fs.existsSync(p.settings)) {
+    const s = readSettings(p.settings);
+    wired = hooksWired(s);
+    kill = s.env?.CLAUDE_FILE_LOCK === '0';
+  }
+  console.log(`target              : ${t}`);
+  console.log(`files installed     : ${filesPresent ? 'yes (.agent-lock/)' : 'NO -- run `install`'}`);
+  console.log(`settings.json wired : ${wired ? 'yes' : 'NO -- run `install`'}`);
+  console.log(`kill switch         : ${kill ? 'OFF (CLAUDE_FILE_LOCK=0)' : 'on'}`);
+  console.log('');
+  if (filesPresent) cmdList();
+}
+
+function loadLock(t) {
+  const p = path.join(t, '.agent-lock/lock/file-lock.cjs');
+  if (!fs.existsSync(p)) die(`not installed at ${t} -- run \`agent-lock install\` first`);
+  return require(p);
+}
+
+function cmdList() {
+  const t = resolveTarget(targetArg);
+  const lock = loadLock(t);
+  const all = lock.listLocks(t);
+  if (!all.length) return console.log('(no active locks)');
+  console.log(`active locks: ${all.length}`);
+  for (const l of all) {
+    const age = Math.floor((Date.now() - new Date(l.startedAt || 0).getTime()) / 1000);
+    console.log(`  ${l.target}\n    agent=${l.agentId}  age=${age}s  reason=${l.reason || '-'}`);
+  }
+}
+
+function cmdRelease() {
+  const file = argv[1];
+  if (!file) return die('usage: agent-lock release <file>');
+  const t = resolveTarget();
+  const lock = loadLock(t);
+  console.log(lock.releaseLock(path.resolve(file), { root: t }));
+}
+
+function cmdReleaseMine() {
+  const sid = argv[1];
+  if (!sid || sid.startsWith('-')) return die('usage: agent-lock release-mine <session-prefix> [<dir>]');
+  const t = resolveTarget(argv[2]);
+  const lockMod = loadLock(t);
+  const agentId = `claude-code-sess-${sid}`;
+  const all = lockMod.listLocks(t);
+  let count = 0;
+  for (const l of all) {
+    if (l.agentId === agentId) {
+      lockMod.releaseLock(l.target, { agentId, root: t });
+      count++;
+    }
+  }
+  console.log(count
+    ? `released ${count} lock(s) held by ${agentId}`
+    : `(none held by ${agentId})`);
+}
+
+function cmdPurgeAll() {
+  const t = resolveTarget(targetArg);
+  const lock = loadLock(t);
+  const all = lock.listLocks(t);
+  for (const l of all) lock.releaseLock(l.target, { root: t });
+  console.log(`purged ${all.length} lock(s)`);
+}
+
+function cmdToggle(value) {
+  const t = resolveTarget(targetArg);
+  const p = paths(t);
+  const s = readSettings(p.settings);
+  s.env = s.env || {};
+  if (value === '0') s.env.CLAUDE_FILE_LOCK = '0';
+  else delete s.env.CLAUDE_FILE_LOCK;
+  writeSettings(p.settings, s);
+  console.log(`file-lock is now ${value === '0' ? 'OFF' : 'ON'} for ${t}`);
+}
+
+function cmdTest() {
+  const t = resolveTarget(targetArg);
+  const p = paths(t);
+  const pre = path.join(p.installHooks, 'file-lock-pre.mjs');
+  const post = path.join(p.installHooks, 'file-lock-post.mjs');
+  if (!fs.existsSync(pre)) return die(`not installed at ${t} -- run \`agent-lock install\` first`);
+
+  const tmp = path.join(require('os').tmpdir(), `agent-lock-test-${Date.now()}.js`);
+  const orig = "function alpha() { return 1; }\nfunction beta() { return 2; }\n";
+  fs.writeFileSync(tmp, orig);
+  const run = (script, sid, payload) => spawnSync('node', [script], {
+    input: JSON.stringify({ session_id: sid, ...payload }),
+    encoding: 'utf-8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: t },
+  });
+  const write = { tool_name: 'Write', tool_input: { file_path: tmp } };
+  const edit  = { tool_name: 'Edit',  tool_input: { file_path: tmp, old_string: 'return 1;' } };
+
+  console.log('1. acquire (sess A)...');
+  let r = run(pre, 'aaaaaaaa', write);
+  console.log(`   exit=${r.status} ${r.status === 0 ? 'OK' : 'FAIL'}`);
+  console.log('2. collision (sess B)...');
+  r = run(pre, 'bbbbbbbb', write);
+  console.log(`   exit=${r.status} ${r.status === 2 ? 'OK (blocked)' : 'FAIL'}`);
+  console.log('3. release (sess A)...');
+  r = run(post, 'aaaaaaaa', write);
+  console.log(`   exit=${r.status} ${r.status === 0 ? 'OK' : 'FAIL'}`);
+  console.log('4. re-acquire after release (sess B)...');
+  r = run(pre, 'bbbbbbbb', edit);
+  console.log(`   exit=${r.status} ${r.status === 0 ? 'OK' : 'FAIL'}`);
+  console.log('5. self re-acquire idempotent (sess B)...');
+  r = run(pre, 'bbbbbbbb', edit);
+  console.log(`   exit=${r.status} ${r.status === 0 ? 'OK' : 'FAIL'}`);
+  run(post, 'bbbbbbbb', edit);
+  console.log('6. file untouched by lock cycle?');
+  const after = fs.readFileSync(tmp, 'utf-8');
+  console.log(`   ${after === orig ? 'OK' : 'FAIL -- file modified'}`);
+  fs.unlinkSync(tmp);
+}
+
+// ---------------------------------------------------------------------------
+// watch — live TUI of active locks
+// ---------------------------------------------------------------------------
+
+function renderWatchFrame(target, locks, now = Date.now()) {
+  const lines = [];
+  const ts = new Date(now).toISOString().replace('T', ' ').slice(0, 19);
+  lines.push(`agent-lock watch · ${target} · ${ts} · ${locks.length} active lock(s)`);
+  lines.push('');
+  if (!locks.length) {
+    lines.push('  (no active locks)');
+    return lines.join('\n') + '\n';
+  }
+  const sorted = [...locks].sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt));
+  const rows = sorted.map(l => ({
+    path: path.relative(target, l.target) || l.target,
+    agent: l.agentId,
+    age: Math.floor((now - new Date(l.startedAt).getTime()) / 1000) + 's',
+    reason: l.reason || '-',
+  }));
+  const widthOf = (k, min) => Math.max(min, ...rows.map(r => String(r[k]).length));
+  const wPath  = widthOf('path',  4);
+  const wAgent = widthOf('agent', 5);
+  const wAge   = widthOf('age',   3);
+  lines.push(`  ${'PATH'.padEnd(wPath)}  ${'AGENT'.padEnd(wAgent)}  ${'AGE'.padEnd(wAge)}  REASON`);
+  for (const r of rows) {
+    lines.push(`  ${r.path.padEnd(wPath)}  ${r.agent.padEnd(wAgent)}  ${r.age.padEnd(wAge)}  ${r.reason}`);
+  }
+  return lines.join('\n') + '\n';
+}
+
+function cmdWatch() {
+  const t = resolveTarget(targetArg === '--once' ? undefined : targetArg);
+  const lock = loadLock(t);
+  const once = argv.includes('--once');
+
+  const draw = (clear) => {
+    if (clear) process.stdout.write('\x1B[H\x1B[2J');
+    process.stdout.write(renderWatchFrame(t, lock.listLocks(t)));
+    if (!once) process.stdout.write('\nCtrl+C to exit.\n');
+  };
+
+  if (once) { draw(false); process.exit(0); }
+
+  /* c8 ignore start */
+  process.stdout.write('\x1B[?25l');
+  const cleanup = () => { process.stdout.write('\x1B[?25h\n'); process.exit(0); };
+  process.on('SIGINT',  cleanup);
+  process.on('SIGTERM', cleanup);
+  draw(true);
+  setInterval(() => draw(true), 1000);
+  /* c8 ignore stop */
+}
+
+// ---------------------------------------------------------------------------
+// doctor — audit the central lockdir
+// ---------------------------------------------------------------------------
+
+const DOCTOR_STALE_MS = 10 * 60 * 1000;
+
+function findDoctorAnomalies(target, lockMod, now = Date.now()) {
+  const anomalies = [];
+  const all = lockMod.listLocks(target);
+  for (const l of all) {
+    const t = new Date(l.startedAt).getTime();
+    if (!Number.isFinite(t) || t <= 0) {
+      anomalies.push({ kind: 'invalid-date', target: l.target, agentId: l.agentId, startedAt: l.startedAt });
+      continue;
+    }
+    if (t > now) {
+      anomalies.push({ kind: 'future', target: l.target, agentId: l.agentId, startedAt: l.startedAt });
+      continue;
+    }
+    const ageMs = now - t;
+    if (ageMs >= DOCTOR_STALE_MS) {
+      anomalies.push({ kind: 'stale', target: l.target, agentId: l.agentId, reason: l.reason, ageMs });
+      continue;
+    }
+    if (!fs.existsSync(l.target)) {
+      anomalies.push({ kind: 'orphan', target: l.target, agentId: l.agentId });
+    }
+  }
+  return anomalies;
+}
+
+function formatDoctorReport(target, anomalies) {
+  const lines = [`agent-lock doctor: ${target}`, ''];
+  if (!anomalies.length) {
+    lines.push('  clean.');
+    return lines.join('\n') + '\n';
+  }
+  for (const a of anomalies) {
+    if (a.kind === 'stale') {
+      const ageS = Math.floor(a.ageMs / 1000);
+      lines.push(`[stale] ${a.target}`);
+      lines.push(`  agent=${a.agentId} age=${ageS}s reason=${a.reason || '-'}`);
+    } else if (a.kind === 'orphan') {
+      lines.push(`[orphan] ${a.target}`);
+      lines.push(`  agent=${a.agentId} (target file does not exist)`);
+    } else if (a.kind === 'future') {
+      lines.push(`[future] ${a.target}`);
+      lines.push(`  agent=${a.agentId} startedAt=${a.startedAt} (in the future)`);
+    } else if (a.kind === 'invalid-date') {
+      lines.push(`[invalid-date] ${a.target}`);
+      lines.push(`  agent=${a.agentId} startedAt=${a.startedAt}`);
+    }
+  }
+  lines.push('');
+  lines.push(`${anomalies.length} anomaly${anomalies.length === 1 ? '' : ' or anomalies'} found.`);
+  return lines.join('\n') + '\n';
+}
+
+function cmdDoctor() {
+  const t = resolveTarget(targetArg);
+  const lockMod = loadLock(t);
+  const anomalies = findDoctorAnomalies(t, lockMod);
+  process.stdout.write(formatDoctorReport(t, anomalies));
+  process.exit(anomalies.length ? 1 : 0);
+}
+
+function die(msg) { console.error(msg); process.exit(1); }
+
+const handlers = {
+  help: cmdHelp,
+  install: cmdInstall,
+  uninstall: cmdUninstall,
+  status: cmdStatus,
+  list: cmdList,
+  release: cmdRelease,
+  'release-mine': cmdReleaseMine,
+  'purge-all': cmdPurgeAll,
+  on: () => cmdToggle('1'),
+  off: () => cmdToggle('0'),
+  test: cmdTest,
+  watch: cmdWatch,
+  doctor: cmdDoctor,
+};
+const fn = handlers[cmd];
+if (!fn) { console.error(`unknown command: ${cmd}\n`); cmdHelp(); process.exit(1); }
+fn();
