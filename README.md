@@ -27,9 +27,15 @@ agent-lock lets every agent edit the same tree at the same time. When one starts
   The other agent's edits — gone, silently.
 ```
 
-### The status quo: branch → PR → human merge
+### The status quo: copy the whole repo, edit, fight the merge
 
-The standard workaround today is to give each agent its own branch (or worktree) and reconcile at merge time:
+To change one line in one file today, the standard advice is: clone or `git worktree add` the entire project so the agent has its own private copy. A whole tree, just to touch one function. Multiply that by N agents and you have N copies of `node_modules`, N build caches, N versions of every file — all to keep the agents from stepping on each other.
+
+Then, when each agent finishes, you have to bring those copies back together. If two agents touched the same file, you get a merge conflict and you sit there reading both diffs deciding which lines to keep. Every agent works on a *snapshot* of the repo — the moment they branched. By the time they finish, the real repo has moved on, and the longer they took, the more painful the reconciliation.
+
+With agent-lock there is no copy and no snapshot. Every agent works on the same live tree. When one starts editing a file, the others are told "taken" and pick something else. When it finishes, the file is immediately visible to everyone — fully up-to-date, no merge step. The repo is never out of sync with itself because nobody ever forked it.
+
+The standard branch / PR workflow looks like this:
 
 ```
   Agent A: branch ─► edit ─► PR ─┐
