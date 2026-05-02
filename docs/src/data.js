@@ -61,15 +61,28 @@ export const data = {
     flows: [
       {
         kind: 'branch',
-        label: 'branch / PR workflow',
-        steps: ['branch', 'edit', 'PR', 'conflict', 'human merge', 'retry'],
-        verdict: 'merge cost is paid by you, after the work is done',
+        label: 'today: branch / PR / merge',
+        tagline: 'Every change goes through git. With many agents, this scales badly.',
+        steps: [
+          { n: '1', title: 'clone or worktree', note: 'each agent gets its own full copy of the repo', tone: 'neutral' },
+          { n: '2', title: 'branch + edit', note: 'agent works on a snapshot from the moment it branched', tone: 'neutral' },
+          { n: '3', title: 'commit + push + PR', note: 'one PR per agent', tone: 'neutral' },
+          { n: '4', title: 'merge conflict', note: 'two agents touched the same file', tone: 'bad' },
+          { n: '5', title: 'human merge', note: 'you read both diffs and stitch them together', tone: 'bad' },
+          { n: '6', title: 'retry', note: 'CI ran on the snapshot, not the merged result', tone: 'bad' },
+        ],
+        verdict: 'You pay the cost at the END, by hand, every time.',
       },
       {
         kind: 'agent-lock',
-        label: 'agent-lock live edit',
-        steps: ['acquire', 'edit', 'release'],
-        verdict: 'collision is detected before the first byte is written',
+        label: 'with agent-lock: one shared tree',
+        tagline: 'No clones. No branches. No merge step. Every agent edits the live repo.',
+        steps: [
+          { n: '1', title: 'acquire', note: 'one tiny JSON file appears in .agent-lock/locks/', tone: 'good' },
+          { n: '2', title: 'edit', note: 'agent writes directly to the live tree', tone: 'good' },
+          { n: '3', title: 'release', note: 'lock file is deleted — file is up to date for everyone', tone: 'good' },
+        ],
+        verdict: 'Collision is caught BEFORE either agent writes a byte.',
       },
     ],
     blocked: {
@@ -96,12 +109,44 @@ export const data = {
   marker: {
     id: 'how',
     eyebrow: 'how it works',
-    title: 'One JSON file per active edit',
+    title: 'How agent-lock actually works',
     body:
-      'When an agent picks up a file, agent-lock atomically creates a tiny ' +
-      'JSON lockfile under `.agent-lock/locks/`. Another agent that wants the ' +
-      'same file sees the lockfile already exists and is told “taken” before ' +
-      'it writes anything. Other files in the same tree stay free.',
+      'Every Claude Code edit goes through hooks. agent-lock plugs into three ' +
+      'of them — before the edit, after the edit, and at the end of the ' +
+      'session — and uses one folder, `.agent-lock/locks/`, to track who is ' +
+      'editing what. Here is the whole protocol.',
+    protocol: [
+      {
+        n: '1',
+        title: 'Agent says "edit src/schema.ts"',
+        note: 'Claude Code runs Write/Edit/MultiEdit. Before the file is touched, the PreToolUse hook fires.',
+      },
+      {
+        n: '2',
+        title: 'Hook tries to claim the file',
+        note: 'It atomically creates .agent-lock/locks/<hash>.json. If the file already exists, another agent has it.',
+      },
+      {
+        n: '3',
+        title: 'Free → edit proceeds',
+        note: 'The hook exits with status 0 and Claude Code writes to your source file. Agent never knew the lock happened.',
+      },
+      {
+        n: '4',
+        title: 'Taken → agent is told "pick another"',
+        note: 'The hook exits with status 2 and a clear message. The agent retries on a different file or waits a few seconds.',
+      },
+      {
+        n: '5',
+        title: 'Edit finishes → lock released',
+        note: 'PostToolUse hook deletes the lock file. The next agent can take it immediately.',
+      },
+      {
+        n: '6',
+        title: 'Session ends → cleanup',
+        note: 'SessionEnd hook sweeps any locks that session was holding. Crashed locks older than 10 min are auto-cleaned by the next acquire.',
+      },
+    ],
     file: {
       name: '.agent-lock/locks/',
       lines: [

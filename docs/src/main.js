@@ -95,12 +95,18 @@ function Pitch({ id, eyebrow, title, body, flows, blocked, table }) {
 
       h('div', { class: 'flows' },
         ...flows.map(f => h('div', { class: `flow ${f.kind}` },
-          h('div', { class: 'label' }, f.label),
-          h('div', { class: 'flow-steps' },
-            ...f.steps.flatMap((s, i) => [
-              h('span', { class: 'step' }, s),
-              i < f.steps.length - 1 ? h('span', { class: 'arrow' }, '→') : null,
-            ]).filter(Boolean),
+          h('div', { class: 'flow-head' },
+            h('div', { class: 'label' }, f.label),
+            f.tagline ? h('div', { class: 'tagline' }, f.tagline) : null,
+          ),
+          h('ol', { class: 'flow-steps-v' },
+            ...f.steps.map(s => h('li', { class: `flow-step tone-${s.tone || 'neutral'}` },
+              h('span', { class: 'n' }, s.n),
+              h('div', { class: 'body' },
+                h('div', { class: 'title' }, s.title),
+                s.note ? h('div', { class: 'note' }, s.note) : null,
+              ),
+            )),
           ),
           h('div', { class: 'verdict' }, f.verdict),
         )),
@@ -119,7 +125,7 @@ function Pitch({ id, eyebrow, title, body, flows, blocked, table }) {
   );
 }
 
-function MarkerDemo({ id, eyebrow, title, body, file, legend }) {
+function MarkerDemo({ id, eyebrow, title, body, file, legend, protocol }) {
   const _bodyNodes = richText(body);
   // Render a marker line with agent-coloured agentId.
   const markerLine = (text, agent) => {
@@ -138,6 +144,16 @@ function MarkerDemo({ id, eyebrow, title, body, file, legend }) {
       h('div', { class: 'eyebrow' }, eyebrow),
       h('h2', null, title),
       h('p', { class: 'lead' }, ..._bodyNodes),
+
+      protocol ? h('ol', { class: 'protocol' },
+        ...protocol.map(p => h('li', { class: 'protocol-step' },
+          h('span', { class: 'n' }, p.n),
+          h('div', { class: 'body' },
+            h('div', { class: 'title' }, p.title),
+            h('div', { class: 'note' }, p.note),
+          ),
+        )),
+      ) : null,
 
       h('div', { class: 'file' },
         h('div', { class: 'titlebar' },
