@@ -170,67 +170,66 @@ export const data = {
   design: {
     id: 'design',
     eyebrow: 'design',
-    title: 'One syscall is the whole protocol',
+    title: 'A folder, a few JSON files, that’s it',
     body:
-      'agent-lock’s correctness rests on `open(O_CREAT | O_EXCL)`. POSIX ' +
-      'guarantees that, under concurrent callers, at most one creates the ' +
-      'lockfile and the rest fail with EEXIST. No daemon, no database, no ' +
-      'kernel mutex — just a directory we can creat into.',
+      'When an agent starts editing a file, agent-lock drops a tiny JSON ' +
+      'file into `.agent-lock/locks/`. When it finishes, the file is deleted. ' +
+      'Other agents can see the folder, so they know what’s taken. No server, ' +
+      'no database, no daemon — just files.',
     principles: [
       {
-        name: 'Central lockdir, not per-file markers',
+        name: 'The folder is the truth',
         body:
-          'v1 wrote `// agent-lock lock: …` into the top of each protected file. ' +
-          'That changed the file’s hash mid-edit, broke Edit-tool hash checks, ' +
-          'forced per-language comment styles, and required shebang gymnastics. ' +
-          'A central `.agent-lock/locks/` directory eliminates all four.',
+          'Want to know what’s being edited right now? Open the ' +
+          '`.agent-lock/locks/` folder. One file in there = one agent is busy ' +
+          'with one file in your repo. Empty folder = nobody’s editing anything.',
       },
       {
-        name: 'Whole-file scope',
+        name: 'One file at a time',
         body:
-          'Per-declaration (“semantic”) locks looked elegant but the parser ' +
-          'was fragile and agents mostly do whole-file rewrites anyway. ' +
-          'Whole-file is simpler, has no false positives, and matches how ' +
-          'agents actually behave.',
+          'agent-lock locks whole files, not parts of files. If two agents ' +
+          'want the same file, one waits or picks something else. Simpler than ' +
+          'tracking which line belongs to whom — and matches how agents work ' +
+          'anyway (they tend to rewrite big chunks).',
       },
       {
-        name: 'No file mutation',
+        name: 'Your code stays clean',
         body:
-          'Lock state never lives inside your source. `git diff` shows your ' +
-          'work, not lock acquisition. `grep` from inside the codebase is no ' +
-          'longer self-referential.',
+          'Lock info lives in the lock folder, never inside your source files. ' +
+          'Your `git diff` only shows your real work. No comment markers ' +
+          'cluttering the top of every file.',
       },
       {
-        name: 'Two states, two transitions',
+        name: 'Held or free, that’s all',
         body:
-          'The lockfile is either present (held) or absent (free). Acquire ' +
-          'creates it; release unlinks it. Stale-sweep is just release fired ' +
-          'from `SessionEnd`. There is no “expiring” state, no lease, no renew.',
+          'A file is either being edited (lock file exists) or it isn’t ' +
+          '(no lock file). Nothing in between. No "almost done", no "renewing", ' +
+          'no countdown. Easy to reason about, easy to debug.',
       },
       {
-        name: 'Stateless tooling',
+        name: 'Nothing to install or run',
         body:
-          'Every CLI command is a pure read or write of `.agent-lock/locks/`. ' +
-          'No caching, no warm-up, no migrations. `ls .agent-lock/locks/` is ' +
-          'the source of truth for what is held right now.',
+          'No background process, no service, no port. agent-lock is ' +
+          'just a few scripts that run when an agent tries to edit a file. ' +
+          'When no agent is editing, nothing is running.',
       },
       {
-        name: 'Cheap retry, expensive overwrite',
+        name: 'Self-healing',
         body:
-          'Agents pay near-zero cost when told “no, retry later.” They pay an ' +
-          'invisible, debugging-hours cost when a lost update survives into ' +
-          'tests. Pessimistic locking trades the cheap cost for the expensive one.',
+          'If an agent crashes mid-edit, its lock file gets left behind. ' +
+          'agent-lock notices old locks (default: 10 minutes) and removes ' +
+          'them automatically. You don’t have to clean anything up by hand.',
       },
     ],
     lifecycle: {
-      label: 'lockfile lifecycle',
+      label: 'a lock’s life, start to finish',
       lines: [
-        '  ┌──────────┐   acquire (O_EXCL)    ┌──────────┐',
-        '  │  absent  │  ───────────────────► │   held   │',
+        '  ┌──────────┐   agent starts edit   ┌──────────┐',
+        '  │   free   │  ───────────────────► │  taken   │',
         '  └──────────┘                       └──────────┘',
         '       ▲                                   │',
-        '       │  release (unlink)                 │',
-        '       │  or stale-sweep on SessionEnd     │',
+        '       │  agent finishes                   │',
+        '       │  (or crashed lock auto-cleaned)   │',
         '       └───────────────────────────────────┘',
       ],
     },
