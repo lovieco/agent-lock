@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { makeTmpDir, writeFile, readFile, repo } = require('./helpers/tmp.cjs');
-const lock = require(repo('lock/file-lock.cjs'));
+const lock = require(repo('lock/agent-lock.cjs'));
 
 function setupProject() {
   const dir = makeTmpDir();

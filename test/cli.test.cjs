@@ -9,7 +9,7 @@ const { makeTmpDir, writeFile, readFile, runCli, repo } = require('./helpers/tmp
 
 function readSettings(t) { return JSON.parse(readFile(path.join(t, '.claude/settings.json'))); }
 function loadCopiedLock(t) {
-  const p = path.join(t, '.agent-lock/lock/file-lock.cjs');
+  const p = path.join(t, '.agent-lock/lock/agent-lock.cjs');
   delete require.cache[require.resolve(p)];
   return require(p);
 }
@@ -34,10 +34,10 @@ describe('install / uninstall', () => {
     const tmp = makeTmpDir();
     const r = runCli(['install', tmp]);
     assert.equal(r.status, 0, r.stderr);
-    assert.ok(fs.existsSync(path.join(tmp, '.agent-lock/lock/file-lock.cjs')));
+    assert.ok(fs.existsSync(path.join(tmp, '.agent-lock/lock/agent-lock.cjs')));
     assert.ok(fs.existsSync(path.join(tmp, '.agent-lock/locks')));
-    assert.ok(fs.existsSync(path.join(tmp, '.agent-lock/hooks/file-lock-pre.mjs')));
-    assert.ok(fs.existsSync(path.join(tmp, '.claude/skills/file-lock')));
+    assert.ok(fs.existsSync(path.join(tmp, '.agent-lock/hooks/agent-lock-pre.mjs')));
+    assert.ok(fs.existsSync(path.join(tmp, '.claude/skills/agent-lock')));
 
     const s = readSettings(tmp);
     const allHooks = ['PreToolUse', 'PostToolUse', 'SessionEnd']
@@ -46,7 +46,7 @@ describe('install / uninstall', () => {
       assert.ok(!h.command.includes('sh -c'), `hook still uses sh -c: ${h.command}`);
     }
     const pre = s.hooks.PreToolUse.flatMap(g => g.hooks);
-    assert.ok(pre.some(h => h.command.includes('file-lock-pre.mjs')));
+    assert.ok(pre.some(h => h.command.includes('agent-lock-pre.mjs')));
   });
 
   it('idempotent — install twice yields no duplicate hooks', () => {
@@ -56,9 +56,9 @@ describe('install / uninstall', () => {
     const s = readSettings(tmp);
     const count = (e, n) => (s.hooks[e] || []).flatMap(g => g.hooks || [])
       .filter(h => h.command.includes(n)).length;
-    assert.equal(count('PreToolUse', 'file-lock-pre.mjs'), 1);
-    assert.equal(count('PostToolUse', 'file-lock-post.mjs'), 1);
-    assert.equal(count('SessionEnd', 'file-lock-purge.mjs'), 1);
+    assert.equal(count('PreToolUse', 'agent-lock-pre.mjs'), 1);
+    assert.equal(count('PostToolUse', 'agent-lock-post.mjs'), 1);
+    assert.equal(count('SessionEnd', 'agent-lock-purge.mjs'), 1);
   });
 
   it('uninstall removes .agent-lock and strips hooks', () => {
@@ -84,7 +84,7 @@ describe('install / uninstall', () => {
     const s = readSettings(tmp);
     const grp = s.hooks.PreToolUse.find(g => g.matcher === 'Write|Edit|MultiEdit');
     assert.equal(grp.hooks.length, 2);
-    assert.ok(grp.hooks[0].command.includes('file-lock-pre.mjs'));
+    assert.ok(grp.hooks[0].command.includes('agent-lock-pre.mjs'));
     assert.equal(grp.hooks[1].command, 'echo keep');
   });
 });

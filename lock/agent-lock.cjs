@@ -176,6 +176,6 @@ if (require.main === module) {
   } else if (cmd === 'show' && arg) {
     console.log(readLockfile(lockFileFor(arg)));
   } else {
-    console.log('Usage:  file-lock.cjs list | release <file> | show <file>');
+    console.log('Usage:  agent-lock.cjs list | release <file> | show <file>');
   }
 }

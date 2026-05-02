@@ -7,7 +7,7 @@ import path from 'node:path';
 
 const require = createRequire(import.meta.url);
 const here    = path.dirname(fileURLToPath(import.meta.url));
-const lock    = require(path.resolve(here, '../lock/file-lock.cjs'));
+const lock    = require(path.resolve(here, '../lock/agent-lock.cjs'));
 
 const STALE_MS = 10 * 60 * 1000;
 const root     = process.env.CLAUDE_PROJECT_DIR || path.resolve(here, '../..');

@@ -7,7 +7,7 @@ import path from 'node:path';
 
 const require = createRequire(import.meta.url);
 const here    = path.dirname(fileURLToPath(import.meta.url));
-const lock    = require(path.resolve(here, '../lock/file-lock.cjs'));
+const lock    = require(path.resolve(here, '../lock/agent-lock.cjs'));
 
 if (process.env.CLAUDE_FILE_LOCK === '0') process.exit(0);
 

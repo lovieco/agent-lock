@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// agent-lock — install, uninstall, and manage the file-lock skill in any project.
+// agent-lock — install, uninstall, and manage the agent-lock skill in any project.
 //
 // Usage:
 //   agent-lock install   [<target-dir>]   copy files + wire .claude/settings.json
@@ -40,7 +40,7 @@ function paths(target) {
     installHooks: path.join(target, '.agent-lock/hooks'),
     locksDir: path.join(target, '.agent-lock/locks'),
     settings: path.join(target, '.claude/settings.json'),
-    skillDir: path.join(target, '.claude/skills/file-lock'),
+    skillDir: path.join(target, '.claude/skills/agent-lock'),
   };
 }
 
@@ -68,9 +68,12 @@ function writeSettings(p, s) {
   fs.writeFileSync(p, JSON.stringify(s, null, 2) + '\n');
 }
 
-function isLivehubHook(h) {
-  return typeof h?.command === 'string'
-    && (h.command.includes('/agent-lock/hooks/file-lock-') || h.command.includes('.agent-lock/hooks/file-lock-'));
+function isAgentLockHook(h) {
+  if (typeof h?.command !== 'string') return false;
+  // Match either current agent-lock-* hook scripts or legacy file-lock-* scripts
+  // (from pre-v0.2 installs) so `uninstall` still cleans up old setups.
+  // Path forms we accept: `.agent-lock/hooks/<prefix>-lock-…` or `/agent-lock/hooks/<prefix>-lock-…`.
+  return /\.?agent-lock\/hooks\/(agent|file)-lock-/.test(h.command);
 }
 
 function injectHook(hooks, event, matcher, scriptRel, timeout) {
@@ -113,9 +116,9 @@ function cmdInstall() {
 
   const s = readSettings(p.settings);
   s.hooks = s.hooks || {};
-  injectHook(s.hooks, 'PreToolUse',  'Write|Edit|MultiEdit', '.agent-lock/hooks/file-lock-pre.mjs',   5000);
-  injectHook(s.hooks, 'PostToolUse', 'Write|Edit|MultiEdit', '.agent-lock/hooks/file-lock-post.mjs',  5000);
-  injectHook(s.hooks, 'SessionEnd',  null,                   '.agent-lock/hooks/file-lock-purge.mjs', 5000);
+  injectHook(s.hooks, 'PreToolUse',  'Write|Edit|MultiEdit', '.agent-lock/hooks/agent-lock-pre.mjs',   5000);
+  injectHook(s.hooks, 'PostToolUse', 'Write|Edit|MultiEdit', '.agent-lock/hooks/agent-lock-post.mjs',  5000);
+  injectHook(s.hooks, 'SessionEnd',  null,                   '.agent-lock/hooks/agent-lock-purge.mjs', 5000);
   writeSettings(p.settings, s);
   console.log(`wired ${path.relative(t, p.settings)} -> ${PKG_ROOT}`);
   console.log('\ninstalled. run `agent-lock status` to verify, or `agent-lock test` to smoke-test.');
@@ -129,7 +132,7 @@ function cmdUninstall() {
     const s = readSettings(p.settings);
     for (const event of ['PreToolUse', 'PostToolUse', 'SessionEnd']) {
       for (const group of s.hooks?.[event] || []) {
-        group.hooks = (group.hooks || []).filter(h => !isLivehubHook(h));
+        group.hooks = (group.hooks || []).filter(h => !isAgentLockHook(h));
       }
     }
     writeSettings(p.settings, s);
@@ -149,15 +152,15 @@ function cmdUninstall() {
 function hooksWired(s) {
   const flatten = a => (a || []).flatMap(g => g.hooks || []);
   return ['PreToolUse', 'PostToolUse', 'SessionEnd'].every(ev =>
-    flatten(s.hooks?.[ev]).some(isLivehubHook));
+    flatten(s.hooks?.[ev]).some(isAgentLockHook));
 }
 
 function cmdStatus() {
   const t = resolveTarget(targetArg);
   const p = paths(t);
-  const filesPresent = ['file-lock-pre.mjs', 'file-lock-post.mjs', 'file-lock-purge.mjs']
+  const filesPresent = ['agent-lock-pre.mjs', 'agent-lock-post.mjs', 'agent-lock-purge.mjs']
     .every(f => fs.existsSync(path.join(p.installHooks, f)))
-    && fs.existsSync(path.join(p.installLock, 'file-lock.cjs'));
+    && fs.existsSync(path.join(p.installLock, 'agent-lock.cjs'));
   let wired = false, kill = false;
   if (fs.existsSync(p.settings)) {
     const s = readSettings(p.settings);
@@ -173,7 +176,7 @@ function cmdStatus() {
 }
 
 function loadLock(t) {
-  const p = path.join(t, '.agent-lock/lock/file-lock.cjs');
+  const p = path.join(t, '.agent-lock/lock/agent-lock.cjs');
   if (!fs.existsSync(p)) die(`not installed at ${t} -- run \`agent-lock install\` first`);
   return require(p);
 }
@@ -233,14 +236,14 @@ function cmdToggle(value) {
   if (value === '0') s.env.CLAUDE_FILE_LOCK = '0';
   else delete s.env.CLAUDE_FILE_LOCK;
   writeSettings(p.settings, s);
-  console.log(`file-lock is now ${value === '0' ? 'OFF' : 'ON'} for ${t}`);
+  console.log(`agent-lock is now ${value === '0' ? 'OFF' : 'ON'} for ${t}`);
 }
 
 function cmdTest() {
   const t = resolveTarget(targetArg);
   const p = paths(t);
-  const pre = path.join(p.installHooks, 'file-lock-pre.mjs');
-  const post = path.join(p.installHooks, 'file-lock-post.mjs');
+  const pre = path.join(p.installHooks, 'agent-lock-pre.mjs');
+  const post = path.join(p.installHooks, 'agent-lock-post.mjs');
   if (!fs.existsSync(pre)) return die(`not installed at ${t} -- run \`agent-lock install\` first`);
 
   const tmp = path.join(require('os').tmpdir(), `agent-lock-test-${Date.now()}.js`);

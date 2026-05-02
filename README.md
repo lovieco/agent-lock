@@ -334,13 +334,13 @@ The hook exits with status 2, which Claude Code treats as "tool call rejected, h
   <project>/
   ├── .claude/
   │   ├── settings.json              ← three hooks wired in here
-  │   └── skills/file-lock/SKILL.md  ← protocol doc Claude reads
+  │   └── skills/agent-lock/SKILL.md  ← protocol doc Claude reads
   └── .agent-lock/
-      ├── lock/file-lock.cjs         ← acquire / release / list / withLock
+      ├── lock/agent-lock.cjs         ← acquire / release / list / withLock
       ├── hooks/
-      │   ├── file-lock-pre.mjs      ← PreToolUse  → acquire-or-block
-      │   ├── file-lock-post.mjs     ← PostToolUse → release
-      │   └── file-lock-purge.mjs    ← SessionEnd  → self-heal
+      │   ├── agent-lock-pre.mjs      ← PreToolUse  → acquire-or-block
+      │   ├── agent-lock-post.mjs     ← PostToolUse → release
+      │   └── agent-lock-purge.mjs    ← SessionEnd  → self-heal
       └── locks/                     ← THE STATE
           ├── 3a7f...json            ← one file per active lock
           └── b04c...json
@@ -358,7 +358,7 @@ agent-lock status               # verify
 agent-lock test                 # smoke-test acquire / collide / release
 ```
 
-`install` copies `lock/` and `hooks/` into `<project>/.agent-lock/`, drops the `file-lock` skill into `.claude/skills/`, and wires three hooks into `.claude/settings.json` (Pre/PostToolUse `Write|Edit|MultiEdit` + SessionEnd).
+`install` copies `lock/` and `hooks/` into `<project>/.agent-lock/`, drops the `agent-lock` skill into `.claude/skills/`, and wires three hooks into `.claude/settings.json` (Pre/PostToolUse `Write|Edit|MultiEdit` + SessionEnd).
 
 It is idempotent: running `install` twice produces the same result as running it once. It is also non-destructive: any pre-existing hook entries in your `settings.json` are preserved, agent-lock's entries are simply prepended to the relevant matcher groups.
 

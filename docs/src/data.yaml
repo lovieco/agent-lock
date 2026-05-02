@@ -162,14 +162,14 @@ architecture:
       path: .agent-lock/hooks/*.mjs
       role: PreToolUse acquires or blocks. PostToolUse releases. SessionEnd purges stale.
     - name: Rules
-      path: .agent-lock/lock/file-lock.cjs
+      path: .agent-lock/lock/agent-lock.cjs
       role: 'acquire / release / withLock. Decides collisions and staleness. Pure Node, zero deps.'
     - name: State
       path: .agent-lock/locks/*.json
       role: One JSON file per active lock. `ls` is the source of truth. No database.
   sidecar:
     name: Skill (sidecar)
-    path: .claude/skills/file-lock/SKILL.md
+    path: .claude/skills/agent-lock/SKILL.md
     role: Protocol doc Claude reads on session start. Teaches the agent to recover gracefully from BLOCKED.
 
 design:
