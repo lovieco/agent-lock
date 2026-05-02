@@ -9,6 +9,11 @@ meta:
     no merge conflicts. When one agent edits a file, the others see "taken"
     and pick another.
 
+breadcrumb:
+  parent:   { label: 'Lovie.co', href: 'https://www.lovie.co' }
+  category: 'Eng'
+  product:  'Agent Lock'
+
 nav:
   brand: Agent Lock
   brandTag: v0.1
@@ -297,7 +302,7 @@ install:
     - 'macOS or Linux'
 
 footer:
-  text: Agent Lock · MIT-licensed · built for Claude Code
-  link:
-    label: lovieco/agent-lock on GitHub
-    href: https://github.com/lovieco/agent-lock
+  text: 'Agent Lock · MIT-licensed · built for Claude Code'
+  links:
+    - { label: 'lovieco/agent-lock on GitHub', href: 'https://github.com/lovieco/agent-lock' }
+    - { label: 'Built by Lovie.co',            href: 'https://www.lovie.co' }

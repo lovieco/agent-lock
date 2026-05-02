@@ -87,6 +87,34 @@ p.lead {
   font-weight: 400;
 }
 
+/* ---------- Breadcrumb (Lovie.co parent brand) ---------- */
+.breadcrumb-bar {
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.breadcrumb-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  color: var(--fg-3);
+}
+.breadcrumb-inner .crumb { color: var(--fg-3); text-decoration: none; }
+.breadcrumb-inner .crumb.parent {
+  color: var(--fg-2);
+  font-weight: 500;
+}
+.breadcrumb-inner .crumb.parent:hover { color: var(--accent); }
+.breadcrumb-inner .crumb.product { color: var(--fg); }
+.breadcrumb-inner .sep { color: var(--line-2); }
+
+/* ---------- Footer link list ---------- */
+.footer-links { display: inline-flex; align-items: center; gap: 10px; }
+.footer-links .footer-sep { color: var(--line-2); }
+
 /* ---------- Nav ---------- */
 
 .nav {

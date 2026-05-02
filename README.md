@@ -1,5 +1,7 @@
 # Agent Lock
 
+[Lovie.co](https://www.lovie.co) · Eng · Agent Lock
+
 **Live multi-agent coding in one shared checkout — no branches, no PRs, no merge.**
 
 In Google Docs, Figma, and Notion, two people editing the same file at the same time is normal. Code is the last holdout: every change still goes through a branch, a PR, and a merge conflict. That loop made sense when humans were the only writers. With multiple AI agents in one repo, it's the bottleneck.
@@ -504,3 +506,7 @@ A. Yes — add `.agent-lock/locks/` to `.gitignore`. The lockdir is per-checkout
 **Q. Why JSON for the lockfile and not a binary format?**
 
 A. Because the lockfile is read by humans (`cat`), by `agent-lock doctor`, and by emergency `release` operations. JSON is the cheapest format that survives all three. The size cost is irrelevant — we're talking about a few hundred bytes per active lock, and the entire lockdir is gone within seconds of edit completion.
+
+---
+
+Built by [Lovie.co](https://www.lovie.co)

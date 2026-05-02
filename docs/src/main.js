@@ -33,6 +33,18 @@ const richText = (str) => {
 
 // ---------- sections ----------
 
+function Breadcrumb({ parent, category, product }) {
+  return h('div', { class: 'breadcrumb-bar' },
+    h('div', { class: 'container breadcrumb-inner' },
+      h('a', { class: 'crumb parent', href: parent.href, target: '_blank', rel: 'noopener' }, parent.label),
+      h('span', { class: 'sep' }, '/'),
+      h('span', { class: 'crumb category' }, category),
+      h('span', { class: 'sep' }, '/'),
+      h('span', { class: 'crumb product' }, product),
+    ),
+  );
+}
+
 function Nav({ brand, brandTag, links }) {
   return h('header', { class: 'nav' },
     h('div', { class: 'container nav-inner' },
@@ -288,11 +300,16 @@ function Install({ id, eyebrow, title, steps, requirements }) {
   );
 }
 
-function Footer({ text, link }) {
+function Footer({ text, links }) {
   return h('footer', null,
     h('div', { class: 'container row' },
       h('span', null, text),
-      h('a', { href: link.href, target: '_blank', rel: 'noopener' }, link.label),
+      h('span', { class: 'footer-links' },
+        ...(links || []).flatMap((l, i) => [
+          i > 0 ? h('span', { class: 'footer-sep' }, '·') : null,
+          h('a', { href: l.href, target: '_blank', rel: 'noopener' }, l.label),
+        ]).filter(Boolean),
+      ),
     ),
   );
 }
@@ -306,6 +323,7 @@ meta.setAttribute('content', data.meta.description);
 
 const app = document.getElementById('app');
 app.append(
+  Breadcrumb(data.breadcrumb),
   Nav(data.nav),
   Hero(data.hero),
   Pitch(data.pitch),
