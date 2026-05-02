@@ -2,7 +2,7 @@
 // every visible string flows through src/data.js.
 
 import './style.css';
-import { data } from './data.js';
+import data from './data.yaml';
 
 // ---------- tiny DOM helper ----------
 const h = (tag, attrs = {}, ...kids) => {

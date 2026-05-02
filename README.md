@@ -1,10 +1,10 @@
-# agent-lock
+# Agent Lock
 
 **Live multi-agent coding in one shared checkout — no branches, no PRs, no merge.**
 
 In Google Docs, Figma, and Notion, two people editing the same file at the same time is normal. Code is the last holdout: every change still goes through a branch, a PR, and a merge conflict. That loop made sense when humans were the only writers. With multiple AI agents in one repo, it's the bottleneck.
 
-agent-lock lets every agent edit the same tree at the same time. When one starts editing a file, the others see "taken, try another" — and pick a different file or wait a few seconds. The whole thing is one tiny lockfile per active edit. That's the whole protocol.
+Agent Lock lets every agent edit the same tree at the same time. When one starts editing a file, the others see "taken, try another" — and pick a different file or wait a few seconds. The whole thing is one tiny lockfile per active edit. That's the whole protocol.
 
 ---
 
@@ -153,7 +153,7 @@ Agent edits violate all three. Two agents asked to "improve error handling in `s
 
 OCC's classic failure mode is the *write-skew anomaly*: each individual write looks fine, but their composition violates an invariant. Agents produce write-skews constantly. They are the worst possible client for OCC.
 
-### Option 4 — pessimistic locking (agent-lock) ✅
+### Option 4 — pessimistic locking (Agent Lock) ✅
 
 ```
                 ┌────────────────────────┐
@@ -322,7 +322,7 @@ reason: Claude Code Edit). Wait, edit a different file, or set
 CLAUDE_FILE_LOCK=0 to override.
 ```
 
-The hook exits with status 2, which Claude Code treats as "tool call rejected, here's the message." B sees the message and decides what to do — typically: pick a different file, or wait and retry. The retry is up to the agent and its system prompt, not agent-lock. We don't want to put a busy-wait loop in the hook because that would consume tool-call budget for nothing.
+The hook exits with status 2, which Claude Code treats as "tool call rejected, here's the message." B sees the message and decides what to do — typically: pick a different file, or wait and retry. The retry is up to the agent and its system prompt, not Agent Lock. We don't want to put a busy-wait loop in the hook because that would consume tool-call budget for nothing.
 
 ---
 
@@ -465,7 +465,7 @@ npm test
 | `svn lock` | 2004 – | per-file lock (opt-in) | for binary files that can't merge (Photoshop, Illustrator, video) |
 | `flock` (Unix) | 1983 – | per-fd advisory | kernel-level cousin; cooperating processes only |
 | `git index.lock` | 2005 – | per-repo write lock | Git's own pessimistic lock for `.git/index` mutations |
-| **agent-lock** | 2026 – | per-file lock | the same idea, applied to AI agents |
+| **Agent Lock** | 2026 – | per-file lock | the same idea, applied to AI agents |
 
 Visual SourceSafe was the closest historical analog to agent-lock: a Microsoft product, broadly used in the Windows world from the late 1990s through the mid 2000s, eventually displaced by Git for the same reason every per-file-lock VCS lost to Git — it was a bad fit for *humans*. agent-lock is, essentially, "what if VSS was right after all, but for agents?" The model that failed for one class of client succeeds for another precisely because the tradeoff variables — lock duration, merge feasibility, retry cost — flip when the client is an AI rather than a person.
 
