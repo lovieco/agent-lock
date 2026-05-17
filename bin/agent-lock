@@ -20,9 +20,9 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const PKG_ROOT = path.resolve(__dirname, '..');
-const SRC_LOCK = path.join(PKG_ROOT, 'lock');
+const SRC_LOCK = path.join(PKG_ROOT, 'src');
 const SRC_HOOKS = path.join(PKG_ROOT, 'hooks');
-const SRC_SKILL = path.join(PKG_ROOT, 'skill');
+const SRC_SKILL = path.join(PKG_ROOT, 'skills/agent-lock');
 
 const argv = process.argv.slice(2);
 const cmd = argv[0] || 'help';
@@ -36,7 +36,7 @@ function paths(target) {
   return {
     target,
     install: path.join(target, '.agent-lock'),
-    installLock: path.join(target, '.agent-lock/lock'),
+    installLock: path.join(target, '.agent-lock/src'),
     installHooks: path.join(target, '.agent-lock/hooks'),
     locksDir: path.join(target, '.agent-lock/locks'),
     settings: path.join(target, '.claude/settings.json'),
@@ -70,10 +70,10 @@ function writeSettings(p, s) {
 
 function isAgentLockHook(h) {
   if (typeof h?.command !== 'string') return false;
-  // Match either current agent-lock-* hook scripts or legacy file-lock-* scripts
-  // (from pre-v0.2 installs) so `uninstall` still cleans up old setups.
-  // Path forms we accept: `.agent-lock/hooks/<prefix>-lock-…` or `/agent-lock/hooks/<prefix>-lock-…`.
-  return /\.?agent-lock\/hooks\/(agent|file)-lock-/.test(h.command);
+  // Match anything inside `.agent-lock/hooks/` — covers the current shape
+  // (pre.mjs / post.mjs / purge.mjs) AND legacy installs with `agent-lock-*`
+  // or `file-lock-*` prefixes so `uninstall` still cleans up old setups.
+  return /\.agent-lock\/hooks\//.test(h.command);
 }
 
 function injectHook(hooks, event, matcher, scriptRel, timeout) {
@@ -116,9 +116,9 @@ function cmdInstall() {
 
   const s = readSettings(p.settings);
   s.hooks = s.hooks || {};
-  injectHook(s.hooks, 'PreToolUse',  'Write|Edit|MultiEdit', '.agent-lock/hooks/agent-lock-pre.mjs',   5000);
-  injectHook(s.hooks, 'PostToolUse', 'Write|Edit|MultiEdit', '.agent-lock/hooks/agent-lock-post.mjs',  5000);
-  injectHook(s.hooks, 'SessionEnd',  null,                   '.agent-lock/hooks/agent-lock-purge.mjs', 5000);
+  injectHook(s.hooks, 'PreToolUse',  'Write|Edit|MultiEdit', '.agent-lock/hooks/pre.mjs',   5000);
+  injectHook(s.hooks, 'PostToolUse', 'Write|Edit|MultiEdit', '.agent-lock/hooks/post.mjs',  5000);
+  injectHook(s.hooks, 'SessionEnd',  null,                   '.agent-lock/hooks/purge.mjs', 5000);
   writeSettings(p.settings, s);
   console.log(`wired ${path.relative(t, p.settings)} -> ${PKG_ROOT}`);
   console.log('\ninstalled. run `agent-lock status` to verify, or `agent-lock test` to smoke-test.');
@@ -158,9 +158,9 @@ function hooksWired(s) {
 function cmdStatus() {
   const t = resolveTarget(targetArg);
   const p = paths(t);
-  const filesPresent = ['agent-lock-pre.mjs', 'agent-lock-post.mjs', 'agent-lock-purge.mjs']
+  const filesPresent = ['pre.mjs', 'post.mjs', 'purge.mjs']
     .every(f => fs.existsSync(path.join(p.installHooks, f)))
-    && fs.existsSync(path.join(p.installLock, 'agent-lock.cjs'));
+    && fs.existsSync(path.join(p.installLock, 'lock.cjs'));
   let wired = false, kill = false;
   if (fs.existsSync(p.settings)) {
     const s = readSettings(p.settings);
@@ -176,7 +176,7 @@ function cmdStatus() {
 }
 
 function loadLock(t) {
-  const p = path.join(t, '.agent-lock/lock/agent-lock.cjs');
+  const p = path.join(t, '.agent-lock/src/lock.cjs');
   if (!fs.existsSync(p)) die(`not installed at ${t} -- run \`agent-lock install\` first`);
   return require(p);
 }
@@ -242,8 +242,8 @@ function cmdToggle(value) {
 function cmdTest() {
   const t = resolveTarget(targetArg);
   const p = paths(t);
-  const pre = path.join(p.installHooks, 'agent-lock-pre.mjs');
-  const post = path.join(p.installHooks, 'agent-lock-post.mjs');
+  const pre = path.join(p.installHooks, 'pre.mjs');
+  const post = path.join(p.installHooks, 'post.mjs');
   if (!fs.existsSync(pre)) return die(`not installed at ${t} -- run \`agent-lock install\` first`);
 
   const tmp = path.join(require('os').tmpdir(), `agent-lock-test-${Date.now()}.js`);

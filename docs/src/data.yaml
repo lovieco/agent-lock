@@ -162,7 +162,7 @@ architecture:
       path: .agent-lock/hooks/*.mjs
       role: PreToolUse acquires or blocks. PostToolUse releases. SessionEnd purges stale.
     - name: Rules
-      path: .agent-lock/lock/agent-lock.cjs
+      path: .agent-lock/src/lock.cjs
       role: 'acquire / release / withLock. Decides collisions and staleness. Pure Node, zero deps.'
     - name: State
       path: .agent-lock/locks/*.json

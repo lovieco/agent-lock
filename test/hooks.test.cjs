@@ -6,11 +6,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { makeTmpDir, writeFile, readFile, repo, runHook } = require('./helpers/tmp.cjs');
-const lock = require(repo('lock/agent-lock.cjs'));
+const lock = require(repo('src/lock.cjs'));
 
-const PRE = repo('hooks/agent-lock-pre.mjs');
-const POST = repo('hooks/agent-lock-post.mjs');
-const PURGE = repo('hooks/agent-lock-purge.mjs');
+const PRE = repo('hooks/pre.mjs');
+const POST = repo('hooks/post.mjs');
+const PURGE = repo('hooks/purge.mjs');
 
 function setup() {
   const dir = makeTmpDir();

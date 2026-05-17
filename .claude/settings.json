@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /Users/s/Code/lovieco/agent-lock/.claude/hooks/skill-sync-prompt.mjs",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}

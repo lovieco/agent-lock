@@ -336,11 +336,11 @@ The hook exits with status 2, which Claude Code treats as "tool call rejected, h
   │   ├── settings.json              ← three hooks wired in here
   │   └── skills/agent-lock/SKILL.md  ← protocol doc Claude reads
   └── .agent-lock/
-      ├── lock/agent-lock.cjs         ← acquire / release / list / withLock
+      ├── src/lock.cjs                ← acquire / release / list / withLock
       ├── hooks/
-      │   ├── agent-lock-pre.mjs      ← PreToolUse  → acquire-or-block
-      │   ├── agent-lock-post.mjs     ← PostToolUse → release
-      │   └── agent-lock-purge.mjs    ← SessionEnd  → self-heal
+      │   ├── pre.mjs                 ← PreToolUse  → acquire-or-block
+      │   ├── post.mjs                ← PostToolUse → release
+      │   └── purge.mjs               ← SessionEnd  → self-heal
       └── locks/                     ← THE STATE
           ├── 3a7f...json            ← one file per active lock
           └── b04c...json

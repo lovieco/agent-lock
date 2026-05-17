@@ -1,0 +1,9 @@
+{
+  "name": "agent-lock",
+  "version": "0.1.0",
+  "description": "Prevent two agents from editing the same file at once. Auto-acquires a sidecar lock on Write/Edit/MultiEdit and blocks collisions with exit 2.",
+  "author": {
+    "name": "lovie.co",
+    "url": "https://lovie.co"
+  }
+}

@@ -9,7 +9,7 @@ Two agents editing the same file = lost writes. This skill enforces a file-level
 
 ## How it works
 
-**One module, two entry points** — everything goes through a single lock library (conventionally `src/lock/agent-lock.cjs`, but any path is fine as long as both the hooks and scripts import the same copy).
+**One module, two entry points** — everything goes through a single lock library (`src/lock.cjs` in this repo; copied to `.agent-lock/src/lock.cjs` in installed projects — any path is fine as long as both the hooks and scripts import the same copy).
 
 - **Sidecar `.lock` file**: `<file>.lock` is the authoritative lock, written atomically via `O_EXCL`. Contains `{ agentId, startedAt, reason, pid }`.
 - **Visible banner** at line 1 of commentable files (`.ts .tsx .js .jsx .cjs .mjs .md .html .py .sh .sql .css`):
@@ -26,9 +26,9 @@ Wired via `.claude/settings.json`:
 
 | Event | Hook | What it does |
 |---|---|---|
-| PreToolUse (Write / Edit / MultiEdit) | `.claude/hooks/agent-lock-pre.mjs` | Acquires lock or blocks (exit 2) |
-| PostToolUse (Write / Edit / MultiEdit) | `.claude/hooks/agent-lock-post.mjs` | Releases lock |
-| SessionEnd | `.claude/hooks/agent-lock-purge.mjs` | Removes stale sidecars |
+| PreToolUse (Write / Edit / MultiEdit) | `.agent-lock/hooks/pre.mjs` | Acquires lock or blocks (exit 2) |
+| PostToolUse (Write / Edit / MultiEdit) | `.agent-lock/hooks/post.mjs` | Releases lock |
+| SessionEnd | `.agent-lock/hooks/purge.mjs` | Removes stale sidecars |
 
 Every hook just shells into the lock module via `createRequire`, so behavior stays consistent across entry points.
 
@@ -99,7 +99,7 @@ node <lock-module>.cjs show <path/to/file>
 node <lock-module>.cjs release <path/to/file>
 
 # Manually purge every stale sidecar
-node .claude/hooks/agent-lock-purge.mjs
+node .agent-lock/hooks/purge.mjs
 ```
 
 ## Conventions
