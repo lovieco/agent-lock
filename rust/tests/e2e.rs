@@ -315,9 +315,12 @@ fn a_killed_install_leaves_no_stuck_claims() {
     // kill(2) with a negative pid: the external `kill -9 -<pgid>` is read differently by procps (Linux)
     assert_eq!(unsafe { kill(-(install.id() as i32), 9) }, 0, "killing the install's process group");
     install.wait().unwrap();
-    hook(&r, "prompt", &prompt, std::process::id());
-    assert_eq!(pending("package.json"), None, "the dead install's marker is cleared");
-    assert!(holder(&r, "package.json").is_some());
+    // only the shim is reaped: its tool may still be exiting, and a hook sees a marker as dead only once it is
+    wait_for("the dead install's marker to be cleared", || {
+        hook(&r, "prompt", &prompt, std::process::id());
+        pending("package.json").is_none()
+    });
+    assert!(holder(&r, "package.json").is_some(), "the claim stays; only its marker goes");
     let stop = payload(&r, SA, r#""hook_event_name":"Stop","stop_hook_active":false"#);
     hook(&r, "stop", &stop, std::process::id());
     assert!(holder(&r, "package.json").is_none() && holder(&r, "package-lock.json").is_none(), "{:?}", state(&r).get("claims").keys());
