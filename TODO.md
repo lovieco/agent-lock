@@ -29,26 +29,27 @@ match is ambiguous, it judges as the union of the candidates and refuses if
 any of them would be refused. Then the main agent's files no longer count as
 foreign, and the `--as` requirement can be relaxed.
 
-### First run of the Linux and universal macOS binaries
+### Run the shipped binaries on the machines CI does not cover
 
-`.github/workflows/native.yml` has never run. Only
-`bin/native/agent-lock-darwin-arm64` exists, so on Linux and on Intel Macs the
-launcher finds no binary and agent-lock stays inactive (it fails open: one
-stderr line, exit 0). Shells other than bash (no `HOSTTYPE`) get the arch from
-`/usr/bin/uname`, so an Intel Mac never execs the arm64 binary. Not yet tried on
-an Intel Mac.
+`.github/workflows/native.yml` ran for the first time on 2026-10-25. The tests
+pass natively on Linux x86_64 (glibc) and macOS arm64, the workflow builds the
+universal macOS binary and the static musl Linux binaries, and its commit job
+pushes them to `bin/native/`. `claude plugin install agent-lock --marketplace
+lovieco/agent-lock` installs them and the installed copy passes `selftest` on
+macOS arm64. What no machine has run yet:
 
-- Run the workflow (workflow_dispatch). Check that both test jobs pass, that
-  `lipo -info` shows two slices in `agent-lock-darwin`, and that `file` and
-  `version` work for both Linux binaries.
-- Check that the commit job can push to `main` (branch protection, the
-  `[skip ci]` commit).
-- Run `bin/agent-lock selftest` with the committed binaries on Linux x86_64,
-  Linux arm64 and an Intel Mac.
-- Measure hook latency on Linux. On macOS arm64 a hook takes about 7.4 ms as
-  Claude Code runs it.
-- Decide whether to keep `agent-lock-darwin-arm64`. The launcher prefers the
-  universal `agent-lock-darwin`, so the arm64 file is unused once that lands.
+- The Linux arm64 binary (cross-built with cargo-zigbuild, never executed) and
+  the x86_64 slice of the universal macOS binary (the macOS runner is arm64).
+  Check `bin/agent-lock selftest` on Linux arm64 and on an Intel Mac. An Intel
+  Mac in a shell without `HOSTTYPE` gets its arch from `/usr/bin/uname`, so it
+  never execs an arm64 slice by mistake.
+- The musl binary against the whole test suite. CI runs `cargo test` on the
+  glibc target and then only `selftest` on the shipped musl x86_64 binary.
+- Hook latency on Linux. On macOS arm64 a hook takes about 7.4 ms as Claude Code
+  runs it.
+- A Linux x86_64 run of the stress and e2e tests under load: the first CI run
+  caught a test that shelled out to `kill -9 -<pgid>`, which procps reads
+  differently from macOS's `kill`.
 
 ### `git stash apply` when the stash is disjoint
 
@@ -189,4 +190,4 @@ and move to a documented signal when Claude Code offers one.
   `#[ignore]`d. In a stress test, 9 concurrent agents
   made about 3,700 hook calls and no file ever had two holders.
 - `.github/workflows/native.yml` builds the universal macOS and Linux musl
-  (x86_64, arm64) binaries. It has not run yet.
+  (x86_64, arm64) binaries, tests them and commits them to `bin/native/`.

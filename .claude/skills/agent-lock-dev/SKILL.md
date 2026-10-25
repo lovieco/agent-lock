@@ -25,7 +25,7 @@ description: How to develop the agent-lock repository itself. Covers the Rust cr
 | `.claude-plugin/plugin.json`, `marketplace.json` | Plugin manifest (version 0.3.0) and the `lovieco` marketplace (no version of its own) |
 | `hooks/hooks.json` | SessionStart runs `bin/agent-lock hook session-start`. Every other hook execs the link that SessionStart keeps at `$CLAUDE_PLUGIN_DATA/shims/core/agent-lock`, and falls back to the launcher |
 | `bin/agent-lock` | POSIX sh launcher. It execs `bin/native/agent-lock-darwin` or `agent-lock-darwin-<arch>` on macOS, and `agent-lock-linux-<arch>` on Linux. With no binary it prints one line and exits 0 (fail open) |
-| `bin/native/` | Committed release binaries. Only `agent-lock-darwin-arm64` exists today |
+| `bin/native/` | Committed release binaries, written by CI: `agent-lock-darwin` (universal), `agent-lock-linux-x86_64`, `agent-lock-linux-arm64` |
 | `skills/agent-lock/SKILL.md` | What agents load. It quotes messages from `rust/src/msg.rs` and the shim |
 | `rust/` | The crate: `src/`, `tests/`, `build.sh` |
 | `docs/` | Vite marketing site. The copy is in `docs/src/data.yaml`, rendered by `docs/src/main.js` |
@@ -125,12 +125,20 @@ running the old binary keep their copy.
   library is installed (`rustup target add x86_64-apple-darwin`). With both
   macOS slices it also writes the universal `agent-lock-darwin` (lipo).
 - On macOS it strips with `/usr/bin/strip` and signs ad hoc with `codesign`.
-- Environment: `TARGETS="<rust triples>"`, `CARGO_CMD="cargo zigbuild"`,
-  `OUT=<dir>`.
+- Environment: `TARGETS="<rust triples>"`, `CARGO_CMD="<the whole build
+  command>"` (default `cargo build`; CI uses `cargo zigbuild`), `OUT=<dir>`.
+  To cross-build the Linux binaries on a Mac:
+  `pip install cargo-zigbuild` in a venv, `rustup target add
+  x86_64-unknown-linux-musl aarch64-unknown-linux-musl`, then run build.sh with
+  `TARGETS="x86_64-unknown-linux-musl aarch64-unknown-linux-musl"`
+  `CARGO_CMD="cargo zigbuild"` `OUT=<scratch dir>`. Never write them into
+  `bin/native/` by hand: CI owns the committed files.
 - Check the result with `bin/agent-lock version` and `bin/agent-lock selftest`.
 - The launcher tries `agent-lock-darwin` before `agent-lock-darwin-<arch>`.
-  Once CI has committed a universal binary, it shadows a local arm64-only
-  build. Build both slices, or let CI build the binary.
+  CI's committed universal binary therefore shadows a local arm64-only build
+  in `bin/native/` (git ignores that file). To run your own build, execute
+  `rust/target/release/agent-lock` directly, or install the x86_64 target so
+  build.sh also writes a universal `agent-lock-darwin`.
 
 ## CI: .github/workflows/native.yml
 
@@ -144,7 +152,7 @@ manual dispatch.
 - `commit`: installs the three binaries into `bin/native/` and pushes
   `native: agent-lock binaries for <sha> [skip ci]` to `main`.
 
-The workflow has not run yet. When it does, bring its commit in with
+It ran first on 2026-10-25 and passes. After it pushes its binaries commit, bring that in with
 `agent-lock sync`.
 
 ## Plugin checks

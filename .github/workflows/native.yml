@@ -43,6 +43,7 @@ jobs:
         run: |
           lipo -info out/agent-lock-darwin
           out/agent-lock-darwin version
+          out/agent-lock-darwin selftest
       - uses: actions/upload-artifact@v4
         with:
           name: native-darwin
@@ -74,6 +75,7 @@ jobs:
         run: |
           file out/agent-lock-linux-x86_64 out/agent-lock-linux-arm64
           out/agent-lock-linux-x86_64 version
+          out/agent-lock-linux-x86_64 selftest
       - uses: actions/upload-artifact@v4
         with:
           name: native-linux

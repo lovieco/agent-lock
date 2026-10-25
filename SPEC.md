@@ -31,7 +31,7 @@ Rust, std only, no crates (`rust/Cargo.toml`). Unix only.
 | Plugin path | What |
 |---|---|
 | `bin/agent-lock` | POSIX sh launcher. macOS (`/System/Library` exists): execs `bin/native/agent-lock-darwin`, else `agent-lock-darwin-<arch>` (arch = `$HOSTTYPE`, which bash sets; other shells ask `/usr/bin/uname -m`; `aarch64` → `arm64`). Linux: `agent-lock-linux-<uname -m>` (`aarch64` → `arm64`). No binary: prints `agent-lock: no native binary for this machine in <dir> (agent-lock is inactive)` to stderr, exit 0 (fail open). |
-| `bin/native/` | Today only `agent-lock-darwin-arm64`. `.github/workflows/native.yml` builds `agent-lock-darwin` (universal) and `agent-lock-linux-{x86_64,arm64}` (static musl) on pushes to `main` that touch `rust/**` or the workflow file, and on manual dispatch; it has not run yet. |
+| `bin/native/` | `agent-lock-darwin` (universal) and `agent-lock-linux-{x86_64,arm64}` (static musl), built, tested and committed by `.github/workflows/native.yml` on pushes to `main` that touch `rust/**` or the workflow file, and on manual dispatch. |
 | `hooks/hooks.json` | hook wiring (§6) |
 | `skills/agent-lock/SKILL.md` | the agent-facing skill |
 | `rust/` | the crate: `src/{main,json,sys,ids,state,rules,hooks,msg,git,shim,cli,lockfiles}.rs`, `tests/`, `build.sh` |

@@ -398,7 +398,7 @@ It clones the repo to `~/.agent-lock-core` and links `bin/agent-lock` onto your 
 
 **Verify:** `agent-lock selftest` runs the real hooks, shims and CLI in a throwaway repo with a bare remote (12 steps, PASS/FAIL each, under half a second). `agent-lock doctor` checks the checkout and your setup; `--fix` repairs what it can.
 
-**Platforms.** macOS and Linux, git ≥ 2.40, Claude Code with plugins. The repo ships `bin/native/agent-lock-darwin-arm64` today; `.github/workflows/native.yml` is set up to build a universal macOS binary and static (musl) Linux x86_64 and arm64 binaries on push. Windows is not supported. It is a Claude Code plugin only: claude.ai and Cowork refuse plugins that ship executables, so there is no `.plugin` upload. **On a machine without a binary, agent-lock is inactive and never blocks anything** (fail open): the launcher prints one line on stderr and exits 0.
+**Platforms.** macOS and Linux, git ≥ 2.40, Claude Code with plugins. The repo ships a universal macOS binary and static (musl) Linux x86_64 and arm64 binaries in `bin/native/`; `.github/workflows/native.yml` builds, tests and commits them on every change to `rust/`. Windows is not supported. It is a Claude Code plugin only: claude.ai and Cowork refuse plugins that ship executables, so there is no `.plugin` upload. **On a machine without a binary, agent-lock is inactive and never blocks anything** (fail open): the launcher prints one line on stderr and exits 0.
 
 ## Commands
 

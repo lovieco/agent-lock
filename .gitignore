@@ -16,3 +16,5 @@ Thumbs.db
 
 # Rust build output. agent-lock's own state is <gitdir>/agent-lock.json, which git never tracks.
 rust/target/
+# A local arm64-only build; CI commits the universal agent-lock-darwin.
+bin/native/agent-lock-darwin-arm64
