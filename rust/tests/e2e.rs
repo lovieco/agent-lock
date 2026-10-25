@@ -284,6 +284,10 @@ fn install_claims_are_shared_with_other_sessions_and_count_as_edits() {
     assert_eq!(d.decision().as_deref(), Some("deny"));
 }
 
+unsafe extern "C" {
+    fn kill(pid: i32, sig: i32) -> i32;
+}
+
 #[test]
 fn a_killed_install_leaves_no_stuck_claims() {
     let (r, fake) = pkg_repo();
@@ -308,7 +312,8 @@ fn a_killed_install_leaves_no_stuck_claims() {
     assert!(pending("package.json").is_some_and(|p| p.starts_with("pkg:")), "a running install keeps its marker");
 
     // kill the shim and the tool (the whole process group), as a crash would
-    Command::new("kill").args(["-9", &format!("-{}", install.id())]).status().unwrap();
+    // kill(2) with a negative pid: the external `kill -9 -<pgid>` is read differently by procps (Linux)
+    assert_eq!(unsafe { kill(-(install.id() as i32), 9) }, 0, "killing the install's process group");
     install.wait().unwrap();
     hook(&r, "prompt", &prompt, std::process::id());
     assert_eq!(pending("package.json"), None, "the dead install's marker is cleared");
