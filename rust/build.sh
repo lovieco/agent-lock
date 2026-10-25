@@ -5,7 +5,7 @@
 #
 #   TARGETS="<rust triple> ..."  default: this machine, plus the other macOS
 #                                arch when its standard library is installed
-#   CARGO_CMD="cargo zigbuild"   the build command (default: cargo)
+#   CARGO_CMD="cargo zigbuild"   the whole build command (default: cargo build)
 #   OUT=<dir>                    default: <repo>/bin/native
 #   CARGO_PROFILE_RELEASE_STRIP=false   strip with /usr/bin/strip instead of rustc
 #                                (always so for macOS binaries built on macOS)
@@ -47,7 +47,7 @@ for t in $TARGETS; do
   # macOS: rustc strips with rust-objcopy, which some toolchains lack; Apple's strip always works
   strip=${CARGO_PROFILE_RELEASE_STRIP:-}
   [ "$os" = darwin ] && [ "$host_os" = darwin ] && [ -x /usr/bin/strip ] && strip=false
-  (cd "$here" && CARGO_PROFILE_RELEASE_STRIP=${strip:-true} ${CARGO_CMD:-cargo} build --release --locked --target "$t")
+  (cd "$here" && CARGO_PROFILE_RELEASE_STRIP=${strip:-true} ${CARGO_CMD:-cargo build} --release --locked --target "$t")
   dst="$out/agent-lock-$os-$arch"
   cp "$here/target/$t/release/agent-lock" "$dst.tmp"
   if [ "$strip" = false ] && [ "$os" = "$host_os" ] && [ -x /usr/bin/strip ]; then
