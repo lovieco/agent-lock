@@ -1,0 +1,170 @@
+{
+  "description": "agent-lock: per-file claims and git safety for agents sharing one checkout (one native binary, one state file per checkout)",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\" hook session-start",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "a=\"$CLAUDE_PLUGIN_DATA/shims/core/agent-lock\"; [ -x \"$a\" ] || a=\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\"; exec \"$a\" hook subagent-start",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "a=\"$CLAUDE_PLUGIN_DATA/shims/core/agent-lock\"; [ -x \"$a\" ] || a=\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\"; exec \"$a\" hook prompt",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "a=\"$CLAUDE_PLUGIN_DATA/shims/core/agent-lock\"; [ -x \"$a\" ] || a=\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\"; exec \"$a\" hook pre-edit",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "a=\"$CLAUDE_PLUGIN_DATA/shims/core/agent-lock\"; [ -x \"$a\" ] || a=\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\"; exec \"$a\" hook pre-bash",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "a=\"$CLAUDE_PLUGIN_DATA/shims/core/agent-lock\"; [ -x \"$a\" ] || a=\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\"; exec \"$a\" hook post-edit",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "a=\"$CLAUDE_PLUGIN_DATA/shims/core/agent-lock\"; [ -x \"$a\" ] || a=\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\"; exec \"$a\" hook post-bash",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Task|Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "a=\"$CLAUDE_PLUGIN_DATA/shims/core/agent-lock\"; [ -x \"$a\" ] || a=\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\"; exec \"$a\" hook post-agent",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "a=\"$CLAUDE_PLUGIN_DATA/shims/core/agent-lock\"; [ -x \"$a\" ] || a=\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\"; exec \"$a\" hook edit-failed",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "a=\"$CLAUDE_PLUGIN_DATA/shims/core/agent-lock\"; [ -x \"$a\" ] || a=\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\"; exec \"$a\" hook post-bash",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "a=\"$CLAUDE_PLUGIN_DATA/shims/core/agent-lock\"; [ -x \"$a\" ] || a=\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\"; exec \"$a\" hook edit-failed",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "a=\"$CLAUDE_PLUGIN_DATA/shims/core/agent-lock\"; [ -x \"$a\" ] || a=\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\"; exec \"$a\" hook post-bash",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "a=\"$CLAUDE_PLUGIN_DATA/shims/core/agent-lock\"; [ -x \"$a\" ] || a=\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\"; exec \"$a\" hook subagent-stop",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "a=\"$CLAUDE_PLUGIN_DATA/shims/core/agent-lock\"; [ -x \"$a\" ] || a=\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\"; exec \"$a\" hook stop",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "a=\"$CLAUDE_PLUGIN_DATA/shims/core/agent-lock\"; [ -x \"$a\" ] || a=\"${CLAUDE_PLUGIN_ROOT}/bin/agent-lock\"; exec \"$a\" hook session-end",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

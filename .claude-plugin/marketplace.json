@@ -1,0 +1,15 @@
+{
+  "name": "lovieco",
+  "description": "Claude Code plugins from Lovie.co",
+  "owner": {
+    "name": "Lovie.co",
+    "url": "https://www.lovie.co"
+  },
+  "plugins": [
+    {
+      "name": "agent-lock",
+      "source": "./",
+      "description": "Many agents in one shared git checkout: one state file, one native binary, per-file claims held until each agent commits its own files, safe commit/sync/push, a git shim against whole-tree commands, and package-manager shims that run installs one at a time."
+    }
+  ]
+}

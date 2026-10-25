@@ -1,9 +1,24 @@
 {
   "name": "agent-lock",
-  "version": "0.1.0",
-  "description": "Prevent two agents from editing the same file at once. Auto-acquires a sidecar lock on Write/Edit/MultiEdit and blocks collisions with exit 2.",
+  "displayName": "Agent Lock",
+  "version": "0.3.0",
+  "license": "MIT",
+  "description": "Many agents in one shared git checkout, on one branch, with no branches or PRs. One state file (.git/agent-lock.json) and one native binary: each file an agent edits is claimed until that agent commits it, `agent-lock commit` commits only your own files, sync/push never touch others' uncommitted work, the git shim refuses whole-tree commands while other agents are working, and package-manager shims run installs one at a time.",
   "author": {
-    "name": "lovie.co",
-    "url": "https://lovie.co"
-  }
+    "name": "Lovie.co",
+    "url": "https://www.lovie.co"
+  },
+  "homepage": "https://github.com/lovieco/agent-lock",
+  "repository": "https://github.com/lovieco/agent-lock",
+  "keywords": [
+    "multi-agent",
+    "subagents",
+    "coordination",
+    "file-claims",
+    "file-lock",
+    "git",
+    "shared-checkout",
+    "commit",
+    "hooks"
+  ]
 }

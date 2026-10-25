@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# agent-lock installer — clone, wire up, symlink onto PATH.
+# agent-lock CLI installer — clone, then symlink `agent-lock` onto your PATH.
 #
 # One-liner:
 #   curl -fsSL https://raw.githubusercontent.com/lovieco/agent-lock/main/install.sh | bash
 #
 # Or with options:
-#   curl -fsSL .../install.sh | bash -s -- --ref v0.1.0 --bin ~/.local/bin
+#   curl -fsSL .../install.sh | bash -s -- --ref <tag> --bin ~/.local/bin
 #
 # Env / flags:
 #   --home <dir>    where to clone the repo (default: ~/.agent-lock-core)
@@ -13,18 +13,18 @@
 #   --ref  <ref>    branch / tag / commit  (default: main)
 #   --bin  <dir>    where to symlink the CLI (default: auto-detect from PATH)
 #   --no-symlink    skip the PATH symlink step
-#   --no-deps       skip `npm install` (tests won't run but the CLI still works)
+#   --no-deps       accepted for compatibility; v3 has no dependencies
 #
 # What it does (in order):
-#   1. Verifies Node >= 16 and git are installed.
+#   1. Verifies git is installed (agent-lock is a native binary: no Node, no runtime).
 #   2. Clones (or updates) the agent-lock repo into --home.
-#   3. Runs `npm install` for the test suite (unless --no-deps).
+#   3. Checks that a prebuilt binary exists for this machine in bin/native/.
 #   4. Symlinks <home>/bin/agent-lock into a writable dir on your PATH.
 #   5. Prints next-step commands.
 #
-# The install script does NOT touch any of your projects. It just makes the
-# `agent-lock` CLI available; per-project wiring happens when you run
-# `agent-lock install /path/to/project` later.
+# This is the CLI for your own shell (status, doctor, selftest). Agents get
+# agent-lock from the Claude Code plugin (claude plugin install agent-lock --marketplace lovieco/agent-lock).
+# Nothing here touches your projects.
 
 set -euo pipefail
 
@@ -33,7 +33,7 @@ AGENT_LOCK_REPO="${AGENT_LOCK_REPO:-https://github.com/lovieco/agent-lock.git}"
 AGENT_LOCK_REF="${AGENT_LOCK_REF:-main}"
 AGENT_LOCK_BIN="${AGENT_LOCK_BIN:-}"
 DO_SYMLINK=1
-DO_DEPS=1
+DO_DEPS=1  # unused since v3 (no dependencies)
 
 # --- args -----------------------------------------------------------------
 while [ $# -gt 0 ]; do
@@ -59,10 +59,7 @@ warn() { printf "${Y}[agent-lock]${X} %s\n" "$*" >&2; }
 die()  { printf "${R}[agent-lock]${X} %s\n" "$*" >&2; exit 1; }
 
 # --- pre-flight -----------------------------------------------------------
-command -v node >/dev/null 2>&1 || die "node is required (https://nodejs.org)"
-command -v git  >/dev/null 2>&1 || die "git is required"
-node_major=$(node -p 'parseInt(process.versions.node.split(".")[0],10)')
-[ "$node_major" -ge 16 ] || die "node >= 16 required (have $node_major)"
+command -v git >/dev/null 2>&1 || die "git is required"
 
 # --- clone / update -------------------------------------------------------
 if [ -d "$AGENT_LOCK_HOME/.git" ]; then
@@ -81,16 +78,10 @@ fi
 
 [ -x "$AGENT_LOCK_HOME/bin/agent-lock" ] || die "bin/agent-lock missing — unexpected repo layout"
 
-# --- dev deps (optional) --------------------------------------------------
-if [ "$DO_DEPS" = 1 ] && [ -f "$AGENT_LOCK_HOME/package.json" ] && [ ! -d "$AGENT_LOCK_HOME/node_modules" ]; then
-  if command -v npm >/dev/null 2>&1; then
-    say "installing dev dependencies (for npm test / coverage)"
-    (cd "$AGENT_LOCK_HOME" && npm install --no-audit --no-fund --silent) \
-      || warn "npm install failed — tests won't run, but the CLI still works"
-  else
-    warn "npm not found — skipping dev deps"
-  fi
-fi
+# --- native binary --------------------------------------------------------
+"$AGENT_LOCK_HOME/bin/agent-lock" version >/dev/null 2>&1 \
+  && [ -n "$("$AGENT_LOCK_HOME/bin/agent-lock" version 2>/dev/null)" ] \
+  || warn "no prebuilt binary for $(uname -sm) in bin/native/ yet — build one with rust/build.sh (needs cargo)"
 
 # --- symlink --------------------------------------------------------------
 pick_bin_dir() {
@@ -130,12 +121,19 @@ cat <<EOF
 
   Next steps:
 
-    agent-lock help                                  show usage
-    agent-lock install /path/to/your/project         wire a project up
-    cd /path/to/your/project && agent-lock test      end-to-end smoke test
+    The Claude Code plugin — this is what makes agents coordinate:
+      claude plugin install agent-lock --marketplace lovieco/agent-lock
+
+    In a repo, from your shell:
+      agent-lock status       claims, sessions and locks in this checkout
+      agent-lock doctor       check the checkout and your setup (--fix repairs)
+      agent-lock install      enable the plugin for everyone on the project
+                              (writes .claude/settings.json; commit it)
+      agent-lock selftest     end-to-end smoke test in a throwaway repo
+      agent-lock help         all commands
 
   Update later:
-    curl -fsSL $AGENT_LOCK_REPO/raw/main/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/lovieco/agent-lock/main/install.sh | bash
 
   Uninstall:
     rm -rf "$AGENT_LOCK_HOME"$( [ -n "$symlink_path" ] && printf ' && rm -f "%s"' "$symlink_path" )

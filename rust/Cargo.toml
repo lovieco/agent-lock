@@ -1,0 +1,20 @@
+[package]
+name = "agent-lock"
+version = "0.3.0"
+edition = "2024"
+description = "Many AI agents in one shared git checkout: per-file claims in one state file, safe commit/sync/push, git and package-manager shims."
+license = "MIT"
+repository = "https://github.com/lovieco/agent-lock"
+publish = false
+
+[[bin]]
+name = "agent-lock"
+path = "src/main.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

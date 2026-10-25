@@ -1,0 +1,115 @@
+name: Native binaries
+
+# Builds the agent-lock binary (rust/) for macOS (universal) and Linux (static
+# musl, x86_64 + arm64), tests it on each native runner, and commits the
+# binaries to bin/native/, where the plugin launcher (bin/agent-lock) finds them.
+# Only rust/** feeds the binary; the commit job's own push carries [skip ci].
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'rust/**'
+      - '.github/workflows/native.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  macos:
+    name: macOS (arm64 + x86_64, universal)
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Test (native arm64)
+        working-directory: rust
+        run: cargo test --locked
+      - name: Build
+        run: TARGETS="aarch64-apple-darwin x86_64-apple-darwin" OUT="$PWD/out" rust/build.sh
+      - name: Check
+        run: |
+          lipo -info out/agent-lock-darwin
+          out/agent-lock-darwin version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-darwin
+          path: out/agent-lock-darwin
+          if-no-files-found: error
+
+  linux:
+    name: Linux (x86_64 + arm64, musl)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+      - name: Test (native x86_64)
+        working-directory: rust
+        run: cargo test --locked
+      - name: cargo-zigbuild
+        run: |
+          python3 -m venv "$RUNNER_TEMP/zig"
+          "$RUNNER_TEMP/zig/bin/pip" install --quiet cargo-zigbuild
+          echo "$RUNNER_TEMP/zig/bin" >> "$GITHUB_PATH"
+      - name: Build
+        run: TARGETS="x86_64-unknown-linux-musl aarch64-unknown-linux-musl" CARGO_CMD="cargo zigbuild" OUT="$PWD/out" rust/build.sh
+      - name: Check
+        run: |
+          file out/agent-lock-linux-x86_64 out/agent-lock-linux-arm64
+          out/agent-lock-linux-x86_64 version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-linux
+          path: out/agent-lock-linux-*
+          if-no-files-found: error
+
+  commit:
+    name: Commit to bin/native
+    needs: [macos, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: out
+          merge-multiple: true
+      - name: Commit and push
+        run: |
+          mkdir -p bin/native
+          install -m 755 out/agent-lock-darwin out/agent-lock-linux-x86_64 out/agent-lock-linux-arm64 bin/native/
+          git add bin/native
+          if git diff --cached --quiet; then
+            echo "binaries unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "native: agent-lock binaries for ${GITHUB_SHA::12} [skip ci]"
+          for attempt in 1 2 3; do
+            git push origin HEAD:main && exit 0
+            git pull -q --rebase origin main
+          done
+          exit 1

@@ -1,156 +1,258 @@
 ---
 name: agent-lock
-description: Prevent two agents from editing the same file at once. A pre-edit Claude Code hook auto-acquires a sidecar `.lock` file (plus a visible `// AGENT-LOCK` comment at the top of commentable source files) for every Write/Edit/MultiEdit tool call, and blocks collisions with exit 2. Scripts can opt in by wrapping their own writes with `withLock()` from the lock module.
+description: How to work in a git checkout that other agents share on the same branch, with the agent-lock plugin active. Use whenever a hook message starts with "[agent-lock]" (BLOCKED, DEADLOCK, TAKEOVER, DENIED, a Note or Warning, "<id> is blocked on <file> (yours)", the end-of-turn "You have uncommitted changes" reminder) or a git or package-manager command fails with a line starting "agent-lock:", and whenever you commit, push, pull, stash, reset, switch branches or run a formatter in such a checkout. There `agent-lock commit` replaces git add + git commit, `agent-lock push` publishes and `agent-lock sync` replaces git pull.
 ---
 
-# File-Lock Protocol
+# agent-lock: working in a shared checkout
 
-Two agents editing the same file = lost writes. This skill enforces a file-level mutex with one unified lock module — used both by Claude Code's Edit/Write hooks and by Node scripts that mutate shared state.
+Other agents (Claude Code sessions and their subagents) may be editing this
+checkout, on this branch, right now. agent-lock keeps their work and yours
+apart:
 
-## How it works
+- Hooks record who edits which file.
+- Shims for `git` (and `npm`, `pnpm`, `yarn`, `bun`, `cargo`, `uv`, `poetry`,
+  `go`, `bundle` when installed) come first on your PATH. They refuse commands
+  that would touch other agents' uncommitted work.
+- All state is in one file, `.git/agent-lock.json`.
 
-**One module, two entry points** — everything goes through a single lock library (`src/lock.cjs` in this repo; copied to `.agent-lock/src/lock.cjs` in installed projects — any path is fine as long as both the hooks and scripts import the same copy).
+When you are the only agent, nothing is blocked.
 
-- **Sidecar `.lock` file**: `<file>.lock` is the authoritative lock, written atomically via `O_EXCL`. Contains `{ agentId, startedAt, reason, pid }`.
-- **Visible banner** at line 1 of commentable files (`.ts .tsx .js .jsx .cjs .mjs .md .html .py .sh .sql .css`):
-  ```ts
-  // AGENT-LOCK: id=<agent> started=<iso> reason=<what>
-  ```
-  Shebang-aware: on files that start with `#!`, the banner goes on line 2 so `node` / `sh` still recognize the interpreter line.
-- **Stale TTL**: 10 min default. A lock older than TTL is treated as abandoned and auto-overridden — protects against crashed sessions.
-- **Env flag**: `export CLAUDE_FILE_LOCK=0` to disable everywhere.
+## Claims
 
-## Claude Code integration (automatic)
+- Your first Write, Edit, MultiEdit or NotebookEdit of a file claims it. You
+  hold the file until you commit it. Reading never claims a file.
+- Your session context gives your id ("Your agent id is …"): `a1b2c3d4` for a
+  session's main agent, `a1b2c3d4:9f3e01aa` for a subagent.
+- Another agent's claim blocks your edits for as long as its process runs.
+  Its uncommitted changes stay its own.
+- **Shared files** are the exception: config files and manifests
+  (`package.json` and its lockfiles, `Cargo.toml`, `tsconfig*.json`,
+  `*.config.*`, `.gitignore`, `CLAUDE.md`, … plus the repo's
+  `.agent-lock-shared`) take several holders. Your edit joins the claim and
+  you get `Note: <file> is a shared file, also being edited by <ids>`. One
+  edit runs at a time: while another agent's edit of it is in flight you are
+  BLOCKED for a moment, so retry; if Edit says the file changed, re-read it.
+  Your commit of a shared file includes the other holders' changes in it
+  (`(shared; with changes by <ids>)`): check `git diff -- <file>` first.
+- A claim whose owner process has exited can be taken over (see TAKEOVER). So
+  can a claim that was never written, such as an edit rejected at a prompt,
+  once it has been idle for 45 min.
+- When a subagent finishes, its claims pass to its parent.
+- A file has one claim under git's spelling of its path, so case and Unicode
+  (NFC/NFD) variants of a name on macOS count as the same file.
+- Claims exist only inside git worktrees. A file you change only through Bash
+  (codegen, scaffolding) has no claim. Name it when you commit (`-- <path>`).
+- `agent-lock status` shows every claim, session and lock. `agent-lock mine`
+  lists your own files.
 
-Wired via `.claude/settings.json`:
+## Messages and what to do
 
-| Event | Hook | What it does |
-|---|---|---|
-| PreToolUse (Write / Edit / MultiEdit) | `.agent-lock/hooks/pre.mjs` | Acquires lock or blocks (exit 2) |
-| PostToolUse (Write / Edit / MultiEdit) | `.agent-lock/hooks/post.mjs` | Releases lock |
-| SessionEnd | `.agent-lock/hooks/purge.mjs` | Removes stale sidecars |
+Hook messages start with `[agent-lock]`. Their commands are ready to copy:
+they use absolute paths, `--as <id>` for a subagent, and `-C <repo>` when your
+shell is in another directory.
 
-Every hook just shells into the lock module via `createRequire`, so behavior stays consistent across entry points.
+**BLOCKED**: `[agent-lock] BLOCKED: src/a.ts is claimed by b1c2d3e4 (claimed 5m ago, last active 2m ago, holder process alive, 3 uncommitted edits).`
 
-**What Claude sees on a collision:**
+- The file belongs to the holder until it commits. Do other work.
+- To wait, run the message's `agent-lock wait --claim <path> --timeout 540`
+  with run_in_background. Exit 0 means the file is now yours, 1 means it timed
+  out, 3 means a deadlock.
+- Never write the file another way: no `>`, `tee`, `sed -i`, `cp`, `mv`,
+  scripts, or formatters over its directory.
+- If the holder looks abandoned ("holder process gone", or idle for hours),
+  tell the user. `agent-lock release --force <path>` takes the holder's work
+  and needs the user's approval. "its edit never ran" means the holder wrote
+  nothing, so a forced release is safe, but you still need the user's approval.
+- `BLOCKED: … is being edited by your subagent <id>, which is still running`:
+  wait for its completion notice. Its files then pass to you.
+- ``BLOCKED: `agent-lock sync` (run by <id>) is updating <file> from upstream right now`` and
+  `BLOCKED: <file> is claimed by <id>, and agent-lock's state file stayed locked for seconds …`:
+  retry in a moment.
+
+**DEADLOCK**: `[agent-lock] DEADLOCK: a.ts is claimed by b1c2d3e4, and b1c2d3e4 is waiting for b.ts (yours).`
+Commit the files you hold now, using the command in the message, so that both
+of you can continue.
+
+**TAKEOVER**: `[agent-lock] TAKEOVER: a.ts was claimed by b1c2d3e4 (its process has exited), which left 2 uncommitted edits in it.`
+The claim is now yours, and agent-lock refused this one edit. Your commit of
+the file will include those edits, so read
+`git -C <repo> diff -- <file>` first. Then either retry the edit to go ahead,
+or run `agent-lock release <path>` to leave the file alone. When no other
+agent is active, you get a `Note:` instead and the edit goes ahead.
+
+**Notes about changes that are not yours.** The edit goes ahead. Before you
+commit the file as your own, read `git -C <repo> diff -- <file>`. If those
+changes are not yours to keep, tell the user.
+
+- `Note: <file> already has uncommitted changes that were not made through your edits`:
+  made by another agent's Bash command, by the user, or in an earlier session.
+- `Note: <file> may still hold uncommitted changes by <id>, whose claim on it ended without a commit.`
+- `Note: <file> carries uncommitted changes by <id>, your parent agent; the claim moved to you with them.`
+  This one is for subagents. Leave committing that file to your parent: your
+  `agent-lock commit` leaves it out unless you name it.
+
+**Waiter notice**: `[agent-lock] b1c2d3e4 is blocked on a.ts (yours).`
+When your change to that file is consistent, commit it right away with the
+command in the message (`agent-lock commit -m "<msg>" -- <path>`).
+
+**End-of-turn reminder**: `[agent-lock] You have uncommitted changes in files you claimed: a.ts, b.ts.`
+It may add `<id> is waiting for <file>.` Unless the user asked you not to
+commit yet:
+
+- If the change is complete and consistent, run `agent-lock commit -m "<msg>"`.
+  When it lists several repos, run one commit per repo with `-C <repo>`. Add
+  `--push` only if the user wants the work published.
+- If the user wants to review first, or the work is mid-change, say so in one
+  line and stop.
+
+**Warnings**: `Warning: your write to <file> landed while it is claimed by <id>` or
+`Warning: your Bash command changed files other agents have claimed: …`.
+Do not change those files again. Tell the user so they can sort out whose
+change it is.
+
+**DENIED**: `[agent-lock] DENIED: this would run agent-lock as a1b2c3d4, but you are a1b2c3d4:9f3e01aa.`
+Run the corrected command printed under it.
+
+**Approval prompts**: `CLAUDE_FILE_LOCK=0`, `agent-lock off`,
+`agent-lock release --force`, and writes to `.git/agent-lock.json` or
+`.git/index.lock` ask the user first. Never use them to get past contention,
+and never rewrite a command to avoid the prompt.
+
+**Shim refusals**: a git or package-manager command exits 1 with one stderr
+line that starts with `agent-lock:`. For example:
+
 ```
-[agent-lock] BLOCKED: path/to/file is locked by agent "claude-code-sess-abc"
-since 2026-04-19T08:30:00Z (42s ago, reason: Claude Code Edit). Wait for it to finish,
-or set CLAUDE_FILE_LOCK=0 to override, or force-release with:
-  node <lock-module>.cjs release "/abs/path/to/file"
-```
-The tool call never runs. Claude should wait, work on a different file, or ask the user to intervene.
-
-## Script API (opt-in, for Node scripts)
-
-```js
-const { withLock, acquireLock, releaseLock, listLocks } = require('<path-to-lock-module>');
-
-// Preferred — auto-release on success OR throw
-await withLock('<path/to/shared-state.json>',
-  { agentId: '<feature-name>-v1', reason: '<short action phrase>', staleMs: 5 * 60 * 1000 },
-  async () => {
-    // read/modify/write the file safely here
-  }
-);
-
-// Manual
-const res = acquireLock(filePath, { agentId, reason });
-if (!res.ok) throw new Error(`Locked by ${res.heldBy}`);
-try { /* edit */ } finally { releaseLock(filePath, { agentId }); }
+agent-lock: `git stash` acts on the whole shared checkout while other agents have uncommitted work (a.txt by b1c2d3e4). Commit only your own files: agent-lock commit -m "<msg>" [-- <paths>]; to undo your own change, name the file: git checkout -- <file>.
 ```
 
-**Error behavior:**
-- `withLock` throws with `err.code === 'ELOCKED'` and `err.details = { heldBy, since, reason, ageMs }` when unable to acquire.
-- `releaseLock` returns `{ ok: false, error: 'not owner (…)' }` if `agentId` mismatch — call without `agentId` to force-release.
+Use the alternative that the line names. Never route around a refusal by
+running the real git or npm by its full path. Package installs run one at a
+time (``agent-lock: waiting for `npm install` (<id>, pid <n>) to finish before …``). A
+dependency change such as `npm install zod` claims the manifest and lockfile
+it rewrites, and is refused while another agent is editing one of them.
 
-## When to use
+## Committing
 
-Use `withLock()` in scripts that mutate shared files **outside** a Claude Code session — cron jobs, batch pipelines, server-side API routes. Inside a Claude session, the hook handles it for you.
-
-| Situation                                              | Action |
-|--------------------------------------------------------|--------|
-| Claude Code agent about to run Edit/Write/MultiEdit    | **Nothing — hook handles it automatically** |
-| Node script that mutates a shared JSON/state file      | Wrap write with `withLock()` |
-| Server-side API route mutating shared JSON             | Wrap write with `withLock()` |
-| Parallel long-running agents sharing a state file      | Both — hook on edits, `withLock()` around multi-step batches |
-
-## Shared state files that must be locked
-
-Any file that more than one agent/process can write concurrently. Typical candidates:
-
-- Shared JSON state databases (entity tables, catalogs, registries).
-- Queue / approval / job-tracker JSON files.
-- Generated graph, index, or cache files that multiple pipelines update.
-- Configuration files edited by both humans and automation.
-
-Add each project's list to its own `CLAUDE.md` or a `LOCKED_FILES.md` so everyone working in the repo knows which paths require `withLock()`.
-
-## CLI
+`agent-lock commit` replaces `git add` + `git commit`. Do not `git add`
+first. It commits exactly the claimed files that you changed, and leaves out
+everyone else's files:
 
 ```bash
-# List all active locks in the repo
-node <lock-module>.cjs list
+agent-lock commit -m "$(cat <<'EOF'
+Add slug helper for post URLs
 
-# Inspect one
-node <lock-module>.cjs show <path/to/file>
-
-# Force release (e.g. after a crash)
-node <lock-module>.cjs release <path/to/file>
-
-# Manually purge every stale sidecar
-node .agent-lock/hooks/purge.mjs
+Replaces the ad-hoc regex in three call sites.
+EOF
+)"
 ```
 
-## Conventions
-
-- **agentId** format: `<feature-name>-v<n>` — e.g. `<pipeline-name>-v1`, `<sync-job>-v2`. Hooks use `claude-code-<session-id-prefix>` automatically.
-- **reason** should be a short action-oriented phrase: `"<applying N updates>"` — not `"doing stuff"`.
-- **staleMs**: 5 min for fast tasks, default (10 min) for batches, max 30 min.
-- Always release in `finally`; prefer `withLock()` which does this for you.
-- **Never** commit `.lock` files or `.claude/locks.json` — they must be gitignored.
-
-## Lock discipline: acquire late, release immediately
-
-**Hold locks for the minimum possible time.** The lock is a mutex — every second it's held is a second another agent is blocked. Treat it like a database transaction: open it as late as possible, close it as early as possible.
-
-- **Acquire only when you're ready to write.** Don't lock a file, then go read other files, call an API, or think. Do all prep work first — read inputs, compute the diff, stage the new content in memory — *then* acquire the lock, write, and release.
-- **Release the moment the write is done.** The instant the file is saved, the lock must drop. Never hold a lock across a user prompt, a network call, a subagent spawn, or a long compute.
-- **One file finished = one immediate unlock.** When editing multiple files, release each as soon as its write completes. Do not batch-hold N locks while editing file N+1.
-- **Prefer `withLock()` over manual acquire/release** — it guarantees release on both success and throw, with no window for leaks.
-- **Target hold time: under 1 second for single writes, under a few seconds for multi-step batches.** If a lock is held longer than that, the code is doing something inside the critical section that doesn't belong there.
-- **Claude Code hooks already do this** — the PreToolUse hook acquires, the PostToolUse hook releases immediately after the tool call. Don't build workflows that defeat this by chaining reads/computes between Edit calls on the same file under one manual lock.
-
-**Why:** when two agents hold long-running locks on the same hot file, collisions compound and one agent's work is silently discarded. Keep locks short and collisions drop to near-zero.
-
-## What the user sees
-
-**In a source file** (commentable types):
-```ts
-// AGENT-LOCK: id=<feature>-v1 started=2026-04-19T08:30:00Z reason=<short action>
-"use client";
-import { ... }
+```
+committed 77567c6670df: 1 file
+  src/slug.ts
+other agents have uncommitted changes in 1 file (not included)
 ```
 
-**In a shebang script** (shebang preserved on line 1):
-```sh
-#!/usr/bin/env node
-// AGENT-LOCK: id=claude-code-abc123 started=2026-04-19T08:30:00Z reason=Claude Code Edit
-import fs from "node:fs";
-```
+- `-- <paths>` commits only those paths. An unclaimed path is claimed for you
+  first; this is how you commit files you wrote through Bash. A path held by
+  one of your finished subagents is taken over. A path held by any other agent
+  is an error, and nothing is committed.
+- `-C <repo>` commits in another repo, one commit per repo. Options can go
+  anywhere before `--`.
+- `--dry-run` lists what would be committed. Each `-m` becomes a paragraph;
+  `-F <file>` or `-F -` reads the message from a file or stdin. `--push`
+  publishes right after the commit.
+- A changed manifest brings its changed lockfile along. `package.json` brings
+  `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock` or `bun.lock`;
+  `Cargo.toml` brings `Cargo.lock`; `pyproject.toml` brings `uv.lock` or
+  `poetry.lock`; `go.mod` brings `go.sum`; `Gemfile` brings `Gemfile.lock`.
+- The repo's pre-commit and commit-msg hooks run on a private index that holds
+  only your files. A refusal prints `commit failed (<code>): …`. Nothing is
+  committed and you keep your claims.
+  - `hook-failed`: fix what the hook reports, then commit again.
+  - `dangerous-hooks`: while other agents have uncommitted changes, the hooks
+    would rewrite the shared worktree (`git stash`, lint-staged without
+    `--no-stash`, the pre-commit.com framework, `checkout -- .`,
+    `reset --hard`). Run the checks yourself on your own files, then commit
+    with `--no-verify`.
+  - `hook-staged`: a hook staged files you do not own. Fix the hook, or commit
+    with `--no-verify`.
+  - `hook-clobbered`: a hook stashed or changed other agents' files. Tell the
+    user which files (and which stash) the message names. When a hook
+    stashed, ask the user to run `git stash pop`; never run it yourself. Do
+    not retry the commit: run the checks yourself and commit with
+    `--no-verify`, or ask the user.
+  - `case-rename` (a case-only `git mv` on a case-insensitive disk) or
+    `staged-untrack` (`git rm --cached` of a file still on disk): ask the user.
+  - `busy`: another commit or sync is running. Retry shortly.
 
-**In JSON / binary files** (no comment) — only the sidecar exists:
-```
-path/to/state.json
-path/to/state.json.lock      ← presence = locked
-```
+## Push and sync
 
-Inspect with `ls **/*.lock 2>/dev/null` (or `find . -name "*.lock" -not -path "./node_modules/*"`).
+- `agent-lock push` publishes HEAD. If the remote has moved, it syncs and
+  retries. Push only when the user wants the work published. agent-lock does
+  not build or test anything, so run the tests first: your commit is HEAD plus
+  your files, a tree that nobody has built yet.
+- `agent-lock sync` brings in upstream commits. It never touches anyone's
+  uncommitted files. Use it instead of `git pull`.
+  - `blocked`: upstream changed files that someone here holds. Follow the
+    advice given per file: commit your own file and sync again, wait for a
+    subagent or another agent, or release a claim you no longer need. A
+    local untracked file, a local deletion or a local change in the way
+    blocks too; the message names the files.
+  - `conflict`: nothing was changed. Report the files to the user.
+  - `rewritten`: upstream history was rewritten. Ask the user before you run
+    `agent-lock sync --accept-rewrite`.
+  - `note: recovered from an interrupted agent-lock sync`: an earlier sync was
+    killed and has been cleaned up. Mention it to the user.
 
-**In Finder (macOS)** — locked files get a **red `Locked` dot** via the `com.apple.metadata:_kMDItemUserTags` extended attribute. They show up with a coloured dot in every Finder view and respond to `mdfind "kMDItemUserTags == 'Locked'"` Spotlight searches. Acquire tags the file; release strips the tag; the stale-purge path (auto-override of a >TTL lock) also strips it. Pre-existing user tags on the file are preserved — Locked is added to / removed from the existing tag set, not an overwrite. No-op on Linux / Windows. Disable with `CLAUDE_FILE_LOCK_TAG=0`. Implemented in [`src/lock/mac-tags.cjs`](../../../src/lock/mac-tags.cjs) (shells out to `/usr/bin/xattr` + `/usr/bin/plutil` — no brew deps). Tagging failures are non-fatal: a Spotlight hiccup or an xattr-hostile filesystem (iCloud, Dropbox) will log and continue; the lock itself still acquires.
+## Subagents
 
-Inspect manually:
+A subagent shares its parent's shell environment, so by default agent-lock
+treats it as the parent. Your session context gives your own id, such as
+`a1b2c3d4:9f3e01aa`.
+
+- Pass `--as <id>` to every agent-lock command, for example
+  `agent-lock commit --as a1b2c3d4:9f3e01aa -m "<msg>"`. The Bash hook denies
+  `commit`, `push`, `sync`, `release`, `wait` and `mine` without it.
+- Put your id in front of raw git and package-manager commands:
+  `AGENT_LOCK_AGENT_ID=a1b2c3d4:9f3e01aa npm install zod`.
+- While any subagent of a session may be running, the git shim counts the main
+  agent's files as another agent's. Whole-tree git is then refused for the main
+  agent too.
+
+## Formatters and fixers
+
+Run them only on your own files:
+
 ```bash
-xattr -l path/to/locked-file                          # see the raw xattr
-mdfind 'kMDItemUserTags == "Locked"' -onlyin .        # find every Locked file
+agent-lock mine -z | xargs -0 -r prettier --write
 ```
+
+`mine` prints the absolute paths of the files you hold. `-r` stops xargs from
+running the tool on the whole tree when you hold no files. Nothing blocks a
+repo-wide run (`prettier --write .`, `eslint --fix .`, `black .`,
+`cargo fmt`); agent-lock only notices after the fact that it changed other
+agents' files.
+
+## Never
+
+- Write a file that another agent holds, by any means.
+- Run `CLAUDE_FILE_LOCK=0`, `agent-lock off` or `agent-lock release --force`
+  unless the user asked for it.
+- Edit, create or delete `.git/agent-lock.json`. Use `agent-lock release <path>`
+  to drop your own claim.
+- Delete `.git/index.lock`. An index.lock error means another git process is
+  running: wait a few seconds, then retry. The next agent-lock commit, sync or
+  push cleans up a lock left by an interrupted sync.
+- Run whole-tree git while other agents work: `git add -A`, `git add .`,
+  `git add -u`, bare `git commit`, `git commit -a`, `git commit --amend`,
+  `git stash` and its pop, apply and drop, `git reset --hard`, `git reset <rev>`,
+  `git checkout .`, `git restore .`, `git checkout <branch>`, `git switch`,
+  `git clean -f`, `git pull`, `git rebase`, `git merge`, `git cherry-pick`,
+  `git revert`, `git am`. The shim refuses them. It allows the recovery forms:
+  `merge --abort`, `rebase --continue` and `--quit`, `cherry-pick` and
+  `revert` with `--continue`, `--abort` or `--quit`, and `am --abort`.
+  `rebase --abort` and `--skip` would discard others' work, so ask the user.
+
+Scoped git is fine: `git status`, `git diff`, `git log`, `git show`,
+`git add <your files>`, `git checkout -- <your file>`,
+`git restore <your file>`, `git reset -- <your paths>`.
